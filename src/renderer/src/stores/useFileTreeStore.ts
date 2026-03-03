@@ -44,9 +44,7 @@ interface FileTreeState {
   stopWatching: (worktreePath: string) => Promise<void>
   handleFileChange: (
     worktreePath: string,
-    eventType: string,
-    changedPath: string,
-    relativePath: string
+    events: Array<{ eventType: string; changedPath: string; relativePath: string }>
   ) => Promise<void>
 }
 
@@ -275,12 +273,7 @@ export const useFileTreeStore = create<FileTreeState>()(
           // Subscribe to change events and route to handleFileChange
           const unsubscribe = window.fileTreeOps.onChange((event) => {
             if (event.worktreePath === worktreePath) {
-              get().handleFileChange(
-                worktreePath,
-                event.eventType,
-                event.changedPath,
-                event.relativePath
-              )
+              get().handleFileChange(worktreePath, event.events)
             }
           })
           watchUnsubscribers.set(worktreePath, unsubscribe)
@@ -304,45 +297,50 @@ export const useFileTreeStore = create<FileTreeState>()(
         }
       },
 
-      // Handle file change event from watcher
+      // Handle batched file change events from watcher
       handleFileChange: async (
         worktreePath: string,
-        eventType: string,
-        changedPath: string,
-        relativePath: string
+        events: Array<{ eventType: string; changedPath: string; relativePath: string }>
       ) => {
-        // Refresh the tree display (shallow scan)
+        // Refresh the tree display once (not per-event)
         await get().refreshFileTree(worktreePath)
 
-        // Incrementally update the flat file index
+        // Incrementally update the flat file index by processing all events in sequence
         set((state) => {
           const currentIndex = state.fileIndexByWorktree.get(worktreePath)
           if (!currentIndex) return state // No index loaded yet
 
-          const newMap = new Map(state.fileIndexByWorktree)
+          let updatedIndex = [...currentIndex]
 
-          if (eventType === 'add') {
-            const name = relativePath.split('/').pop() || relativePath
-            const dotIdx = name.lastIndexOf('.')
-            const extension = dotIdx > 0 ? name.substring(dotIdx).toLowerCase() : null
-            newMap.set(worktreePath, [
-              ...currentIndex,
-              { name, path: changedPath, relativePath, extension }
-            ])
-          } else if (eventType === 'unlink') {
-            newMap.set(
-              worktreePath,
-              currentIndex.filter((f) => f.path !== changedPath)
-            )
-          } else if (eventType === 'unlinkDir') {
-            const prefix = changedPath + '/'
-            newMap.set(
-              worktreePath,
-              currentIndex.filter((f) => !f.path.startsWith(prefix))
-            )
+          for (const { eventType, changedPath, relativePath } of events) {
+            if (eventType === 'add') {
+              // Only add if not already present (avoid duplicates)
+              if (!updatedIndex.some((f) => f.path === changedPath)) {
+                const name = relativePath.split('/').pop() || relativePath
+                const dotIdx = name.lastIndexOf('.')
+                const extension = dotIdx > 0 ? name.substring(dotIdx).toLowerCase() : null
+                updatedIndex.push({ name, path: changedPath, relativePath, extension })
+              }
+            } else if (eventType === 'change') {
+              // Key fix: if a 'change' fires for a path not in the index,
+              // treat it as an implicit 'add' — recovers from lost add events
+              if (!updatedIndex.some((f) => f.path === changedPath)) {
+                const name = relativePath.split('/').pop() || relativePath
+                const dotIdx = name.lastIndexOf('.')
+                const extension = dotIdx > 0 ? name.substring(dotIdx).toLowerCase() : null
+                updatedIndex.push({ name, path: changedPath, relativePath, extension })
+              }
+            } else if (eventType === 'unlink') {
+              updatedIndex = updatedIndex.filter((f) => f.path !== changedPath)
+            } else if (eventType === 'unlinkDir') {
+              const prefix = changedPath + '/'
+              updatedIndex = updatedIndex.filter((f) => !f.path.startsWith(prefix))
+            }
+            // 'addDir' events do not affect the flat file index
           }
-          // 'addDir' and 'change' events do not affect the flat file index
 
+          const newMap = new Map(state.fileIndexByWorktree)
+          newMap.set(worktreePath, updatedIndex)
           return { fileIndexByWorktree: newMap }
         })
       }
