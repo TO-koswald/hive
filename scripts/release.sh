@@ -14,6 +14,20 @@ warn()  { echo -e "${YELLOW}⚠${NC} $1"; }
 err()   { echo -e "${RED}✗${NC} $1" >&2; }
 fatal() { err "$1"; exit 1; }
 
+# ── Parse flags ──────────────────────────────────────────────────
+SHUTDOWN_AFTER=false
+SUDO_KEEPALIVE_PID=""
+for arg in "$@"; do
+  case "$arg" in
+    --shutdown) SHUTDOWN_AFTER=true ;;
+    *) fatal "Unknown argument: $arg" ;;
+  esac
+done
+
+if $SHUTDOWN_AFTER; then
+  warn "Computer will shut down after release completes"
+fi
+
 # ── Constants ─────────────────────────────────────────────────────
 REPO="morapelker/hive"
 GHOSTTY_DEPS_TAG="ghostty-deps-v1"
@@ -58,6 +72,29 @@ source "$ENV_SIGNING"
 [[ -n "${APPLE_APP_SPECIFIC_PASSWORD:-}" ]]  || fatal "APPLE_APP_SPECIFIC_PASSWORD not set in .env.signing"
 [[ -n "${APPLE_TEAM_ID:-}" ]]                || fatal "APPLE_TEAM_ID not set in .env.signing"
 ok "Signing credentials loaded"
+
+# Load .env for Telegram notifications (optional)
+if [[ -f "$PROJECT_DIR/.env" ]]; then
+  source "$PROJECT_DIR/.env"
+fi
+
+tg() {
+  if [[ -n "${MORIKO_TELEGRAM_BOT_TOKEN:-}" && -n "${MORIKO_TELEGRAM_OPERATOR_CHAT_ID:-}" ]]; then
+    curl -s -X POST "https://api.telegram.org/bot${MORIKO_TELEGRAM_BOT_TOKEN}/sendMessage" \
+      -d chat_id="${MORIKO_TELEGRAM_OPERATOR_CHAT_ID}" \
+      -d text="$1" > /dev/null 2>&1 || true
+  fi
+}
+
+# Acquire sudo credentials early if shutdown is requested
+if $SHUTDOWN_AFTER; then
+  info "Shutdown requested — acquiring sudo credentials..."
+  sudo -v || fatal "Failed to acquire sudo credentials (needed for shutdown)"
+  # Keep sudo credentials alive in background for the duration of the build
+  (while true; do sudo -n true; sleep 50; kill -0 "$$" 2>/dev/null || exit; done) &
+  SUDO_KEEPALIVE_PID=$!
+  ok "Sudo credentials acquired (will shutdown after release)"
+fi
 
 # Read current version and suggest next patch
 CURRENT_VERSION=$(node -p "require('./package.json').version")
@@ -154,6 +191,23 @@ echo ""
 read -rp "Proceed? [Y/n] " confirm
 [[ "$confirm" =~ ^[Nn]$ ]] && { info "Aborted."; exit 0; }
 
+# Arm EXIT trap AFTER user confirmation (so aborting doesn't trigger shutdown/notification)
+RELEASE_SUCCEEDED=false
+on_exit() {
+  if ! $RELEASE_SUCCEEDED; then
+    tg "❌ Hive release v${NEW_VERSION} — release failed"
+  fi
+  if $SHUTDOWN_AFTER; then
+    kill "$SUDO_KEEPALIVE_PID" 2>/dev/null || true
+    warn "Shutting down in 10 seconds... (Ctrl+C to cancel)"
+    sleep 10
+    sudo shutdown -h now
+  fi
+}
+trap on_exit EXIT
+
+tg "🚀 Hive release v${NEW_VERSION} — starting release"
+
 # ── Phase 2: Version bump + git ──────────────────────────────────
 info "Bumping version to ${NEW_VERSION}..."
 
@@ -176,6 +230,7 @@ git push origin "v${NEW_VERSION}"
 ok "Pushed commit and tag"
 
 # ── Phase 3: Build ────────────────────────────────────────────────
+tg "🔨 Hive release v${NEW_VERSION} — building"
 # Resolve libghostty.a — check local paths first, download as last resort
 LOCAL_GHOSTTY="$HOME/Documents/dev/ghostty/macos/GhosttyKit.xcframework/macos-arm64_x86_64/libghostty.a"
 VENDOR_GHOSTTY="$PROJECT_DIR/vendor/libghostty.a"
@@ -209,6 +264,7 @@ pnpm build
 ok "Electron build complete"
 
 # ── Phase 4: Package + Sign + Notarize + Publish ─────────────────
+tg "📦 Hive release v${NEW_VERSION} — build complete, packaging & notarizing"
 info "Packaging, signing, notarizing, and publishing..."
 info "This will take several minutes (notarization is slow)."
 
@@ -307,3 +363,6 @@ echo "    • Hive-${NEW_VERSION}-arm64-mac.zip"
 echo "    • Hive-${NEW_VERSION}-mac.zip"
 echo "    • latest-mac.yml (auto-updater)"
 echo ""
+
+RELEASE_SUCCEEDED=true
+tg "✅ Hive release v${NEW_VERSION} — released successfully"
