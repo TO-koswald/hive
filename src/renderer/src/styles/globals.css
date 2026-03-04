@@ -360,3 +360,46 @@
     transform: translateX(var(--scroll-distance));
   }
 }
+
+/* Indeterminate progress bar bounce animation for agent working indicator.
+   6-phase bouncing worm: grow → slide → shrink → grow → slide back → shrink.
+   Uses left/right on position:absolute to animate width + position together. */
+@keyframes progress-bounce {
+  0% {
+    left: 0;
+    right: 100%;
+  }
+  12% {
+    left: 0;
+    right: 75%;
+  }
+  38% {
+    left: 75%;
+    right: 0;
+  }
+  50% {
+    left: 100%;
+    right: 0;
+  }
+  62% {
+    left: 75%;
+    right: 0;
+  }
+  88% {
+    left: 0;
+    right: 75%;
+  }
+  100% {
+    left: 0;
+    right: 100%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .progress-bounce-bar {
+    animation: none !important;
+    left: 37.5%;
+    right: 37.5%;
+    opacity: 0.7;
+  }
+}

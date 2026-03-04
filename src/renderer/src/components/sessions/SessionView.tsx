@@ -15,6 +15,7 @@ import { SlashCommandPopover } from './SlashCommandPopover'
 import { FileMentionPopover } from './FileMentionPopover'
 import { ScrollToBottomFab } from './ScrollToBottomFab'
 import { PlanReadyImplementFab } from './PlanReadyImplementFab'
+import { IndeterminateProgressBar } from './IndeterminateProgressBar'
 import { useFileMentions } from '@/hooks/useFileMentions'
 import type { FlatFile } from '@/lib/file-search-utils'
 import { useSessionStore } from '@/stores/useSessionStore'
@@ -4038,6 +4039,7 @@ export function SessionView({ sessionId }: SessionViewProps): React.JSX.Element 
                 </span>
               </div>
               <div className="flex items-center gap-1.5">
+                {isStreaming && <IndeterminateProgressBar mode={mode} />}
                 {isStreaming && !inputValue.trim() ? (
                   <Button
                     onClick={handleAbort}
