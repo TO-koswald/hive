@@ -129,24 +129,31 @@ export class CommandFilterService {
    * Match a single pattern against a command string with wildcard support
    *
    * Wildcards:
-   * - * matches any sequence except /
-   * - ** matches any sequence including /
+   * - * matches any sequence except / (for file-path patterns: edit, read, write)
+   * - * matches any sequence INCLUDING / (for bash patterns — args often contain paths)
+   * - ** matches any sequence including / (all pattern types)
    *
    * Examples:
    * - "bash: npm *" matches "bash: npm install", "bash: npm test"
+   * - "bash: cd *" matches "bash: cd /Users/foo/bar" (slash-aware for bash)
    * - "read: src/**" matches "read: src/main/db/schema.ts"
    * - "edit: *.env" matches "edit: .env", "edit: production.env"
    */
   private matchPattern(command: string, pattern: string): boolean {
     try {
+      // For bash commands, * should match any character including /
+      // because command arguments regularly contain paths with slashes.
+      // The [^/]* behaviour is only useful for file-path patterns (edit:, read:, write:).
+      const isBashPattern = pattern.startsWith('bash:')
+
       // Escape special regex characters except our wildcards
       const regexPattern = pattern
         // First, protect ** by replacing with placeholder
         .replace(/\*\*/g, '__DOUBLESTAR__')
         // Escape other special regex chars
         .replace(/[.+?^${}()|[\]\\]/g, '\\$&')
-        // Convert * to regex (matches any sequence except /)
-        .replace(/\*/g, '[^/]*')
+        // Convert * to regex — for bash patterns match everything, for file patterns exclude /
+        .replace(/\*/g, isBashPattern ? '.*' : '[^/]*')
         // Convert ** back to regex (matches any sequence)
         .replace(/__DOUBLESTAR__/g, '.*')
 
