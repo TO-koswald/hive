@@ -4,6 +4,7 @@ import { EventEmitter } from 'node:events'
 import readline from 'node:readline'
 
 import { createLogger } from './logger'
+import { asObject, asString } from './codex-utils'
 
 const log = createLogger({ component: 'CodexAppServerManager' })
 
@@ -94,6 +95,20 @@ export interface CodexStartSessionOptions {
   resumeCursor?: string
   codexBinaryPath?: string
   codexHomePath?: string
+}
+
+// ── Turn input ────────────────────────────────────────────────────
+
+export interface CodexTurnInput {
+  text?: string
+  model?: string
+  reasoningEffort?: string
+}
+
+export interface CodexTurnStartResult {
+  turnId: string
+  threadId: string
+  resumeCursor?: string
 }
 
 // ── Event types ───────────────────────────────────────────────────
@@ -453,6 +468,66 @@ export class CodexAppServerManager extends EventEmitter<CodexAppServerManagerEve
     return Array.from(this.sessions.values(), ({ session }) => ({ ...session }))
   }
 
+  async sendTurn(
+    threadId: string,
+    input: CodexTurnInput
+  ): Promise<CodexTurnStartResult> {
+    const context = this.sessions.get(threadId)
+    if (!context) {
+      throw new Error(`sendTurn: no session found for threadId=${threadId}`)
+    }
+
+    if (!context.session.threadId) {
+      throw new Error('sendTurn: session has no threadId')
+    }
+
+    // Build the turn input array
+    const turnInput: Array<{ type: string; text: string }> = []
+    if (input.text) {
+      turnInput.push({ type: 'text', text: input.text })
+    }
+
+    const params: Record<string, unknown> = {
+      threadId: context.session.threadId,
+      input: turnInput
+    }
+
+    if (input.model) {
+      params.model = input.model
+    }
+
+    if (input.reasoningEffort) {
+      params.settings = { reasoningEffort: input.reasoningEffort }
+    }
+
+    // Update session to running before sending
+    this.updateSession(context, { status: 'running' })
+    this.emitLifecycleEvent(context, 'turn/sending', 'Sending turn')
+
+    const response = await this.sendRequest<Record<string, unknown>>(
+      context,
+      'turn/start',
+      params
+    )
+
+    const responseObj = asObject(response)
+    const turnObj = asObject(responseObj?.turn)
+    const turnId = asString(turnObj?.id) ?? asString(responseObj?.turnId) ?? ''
+    const resumeCursor = asString(responseObj?.resumeCursor)
+
+    // Update active turn
+    this.updateSession(context, {
+      activeTurnId: turnId || null,
+      ...(resumeCursor ? { resumeCursor } : {})
+    })
+
+    return {
+      turnId,
+      threadId: context.session.threadId,
+      ...(resumeCursor ? { resumeCursor } : {})
+    }
+  }
+
   // ── Process listeners ─────────────────────────────────────────
 
   private attachProcessListeners(context: CodexSessionContext, trackingId: string): void {
@@ -770,15 +845,3 @@ export class CodexAppServerManager extends EventEmitter<CodexAppServerManagerEve
   }
 }
 
-// ── Free helpers ────────────────────────────────────────────────────
-
-function asObject(value: unknown): Record<string, unknown> | undefined {
-  if (!value || typeof value !== 'object') {
-    return undefined
-  }
-  return value as Record<string, unknown>
-}
-
-function asString(value: unknown): string | undefined {
-  return typeof value === 'string' ? value : undefined
-}

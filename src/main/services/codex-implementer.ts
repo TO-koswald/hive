@@ -4,7 +4,11 @@ import type { AgentSdkCapabilities, AgentSdkImplementer } from './agent-sdk-type
 import { CODEX_CAPABILITIES } from './agent-sdk-types'
 import { getAvailableCodexModels, getCodexModelInfo, CODEX_DEFAULT_MODEL } from './codex-models'
 import { createLogger } from './logger'
-import { CodexAppServerManager } from './codex-app-server-manager'
+import {
+  CodexAppServerManager,
+  type CodexManagerEvent
+} from './codex-app-server-manager'
+import { mapCodexEventToStreamEvents } from './codex-event-mapper'
 
 const log = createLogger({ component: 'CodexImplementer' })
 
@@ -164,25 +168,185 @@ export class CodexImplementer implements AgentSdkImplementer {
   // ── Messaging ────────────────────────────────────────────────────
 
   async prompt(
-    _worktreePath: string,
-    _agentSessionId: string,
-    _message:
+    worktreePath: string,
+    agentSessionId: string,
+    message:
       | string
       | Array<
           | { type: 'text'; text: string }
           | { type: 'file'; mime: string; url: string; filename?: string }
         >,
-    _modelOverride?: { providerID: string; modelID: string; variant?: string }
+    modelOverride?: { providerID: string; modelID: string; variant?: string }
   ): Promise<void> {
-    throw new Error('CodexImplementer.prompt() not yet implemented')
+    const key = this.getSessionKey(worktreePath, agentSessionId)
+    const session = this.sessions.get(key)
+    if (!session) {
+      throw new Error(
+        `Prompt failed: session not found for ${worktreePath} / ${agentSessionId}`
+      )
+    }
+
+    // Extract text from message
+    let text: string
+    if (typeof message === 'string') {
+      text = message
+    } else {
+      text = message
+        .filter((part) => part.type === 'text')
+        .map((part) => (part as { type: 'text'; text: string }).text)
+        .join('\n')
+    }
+
+    if (!text.trim()) {
+      log.warn('Prompt: empty text, ignoring', { worktreePath, agentSessionId })
+      return
+    }
+
+    // Inject synthetic user message so getMessages() returns it
+    const syntheticTimestamp = new Date().toISOString()
+    session.messages.push({
+      role: 'user',
+      parts: [{ type: 'text', text, timestamp: syntheticTimestamp }],
+      timestamp: syntheticTimestamp
+    })
+
+    // Emit busy status
+    session.status = 'running'
+    this.emitStatus(session.hiveSessionId, 'busy')
+
+    log.info('Prompt: starting', {
+      worktreePath,
+      agentSessionId,
+      hiveSessionId: session.hiveSessionId,
+      textLength: text.length
+    })
+
+    // Set up event listener for streaming
+    let assistantText = ''
+    let reasoningText = ''
+    let turnCompleted = false
+    let turnFailed = false
+
+    const handleEvent = (event: CodexManagerEvent) => {
+      // Only handle events for this thread
+      if (event.threadId !== session.threadId) return
+
+      const streamEvents = mapCodexEventToStreamEvents(event, session.hiveSessionId)
+      for (const streamEvent of streamEvents) {
+        this.sendToRenderer('opencode:stream', streamEvent)
+      }
+
+      // Accumulate text for message history
+      if (event.method === 'content.delta') {
+        const payload = event.payload as Record<string, unknown> | undefined
+        const delta = payload?.delta as Record<string, unknown> | undefined
+        const deltaType = delta?.type as string | undefined
+
+        const deltaText = (delta?.text as string)
+          ?? (payload?.assistantText as string)
+          ?? (payload?.reasoningText as string)
+          ?? event.textDelta
+          ?? ''
+
+        if (deltaType === 'reasoning' || payload?.reasoningText) {
+          reasoningText += deltaText
+        } else {
+          assistantText += deltaText
+        }
+      }
+
+      // Detect turn completion and whether it failed
+      if (event.method === 'turn/completed') {
+        turnCompleted = true
+        const payload = event.payload as Record<string, unknown> | undefined
+        const turnObj = payload?.turn as Record<string, unknown> | undefined
+        const status = (turnObj?.status as string) ?? (payload?.state as string)
+        if (status === 'failed') {
+          turnFailed = true
+        }
+      }
+    }
+
+    this.manager.on('event', handleEvent)
+
+    try {
+      const model = modelOverride?.modelID ?? this.selectedModel
+
+      await this.manager.sendTurn(session.threadId, {
+        text,
+        model
+      })
+
+      // Wait for turn completion (the sendTurn starts the turn, but
+      // events stream asynchronously via the manager's event emitter)
+      await this.waitForTurnCompletion(session, () => turnCompleted)
+
+      // Store assistant message
+      const assistantParts: unknown[] = []
+      if (assistantText) {
+        assistantParts.push({
+          type: 'text',
+          text: assistantText,
+          timestamp: new Date().toISOString()
+        })
+      }
+      if (reasoningText) {
+        assistantParts.push({
+          type: 'reasoning',
+          text: reasoningText,
+          timestamp: new Date().toISOString()
+        })
+      }
+
+      if (assistantParts.length > 0) {
+        session.messages.push({
+          role: 'assistant',
+          parts: assistantParts,
+          timestamp: new Date().toISOString()
+        })
+      }
+
+      session.status = turnFailed ? 'error' : 'ready'
+      this.emitStatus(session.hiveSessionId, 'idle')
+
+      log.info('Prompt: completed', {
+        worktreePath,
+        agentSessionId,
+        assistantTextLength: assistantText.length,
+        reasoningTextLength: reasoningText.length
+      })
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error)
+      log.error(
+        'Prompt streaming error',
+        error instanceof Error ? error : new Error(errorMessage),
+        { worktreePath, agentSessionId, error: errorMessage }
+      )
+
+      session.status = 'error'
+      this.sendToRenderer('opencode:stream', {
+        type: 'session.error',
+        sessionId: session.hiveSessionId,
+        data: { error: errorMessage }
+      })
+      this.emitStatus(session.hiveSessionId, 'idle')
+    } finally {
+      this.manager.removeListener('event', handleEvent)
+    }
   }
 
   async abort(_worktreePath: string, _agentSessionId: string): Promise<boolean> {
     throw new Error('CodexImplementer.abort() not yet implemented')
   }
 
-  async getMessages(_worktreePath: string, _agentSessionId: string): Promise<unknown[]> {
-    throw new Error('CodexImplementer.getMessages() not yet implemented')
+  async getMessages(worktreePath: string, agentSessionId: string): Promise<unknown[]> {
+    const key = this.getSessionKey(worktreePath, agentSessionId)
+    const session = this.sessions.get(key)
+    if (!session) {
+      log.warn('getMessages: session not found', { worktreePath, agentSessionId })
+      return []
+    }
+    return [...session.messages]
   }
 
   // ── Models ───────────────────────────────────────────────────────
@@ -341,5 +505,80 @@ export class CodexImplementer implements AgentSdkImplementer {
   ): 'idle' | 'busy' | 'retry' {
     if (status === 'running') return 'busy'
     return 'idle'
+  }
+
+  private emitStatus(
+    hiveSessionId: string,
+    status: 'idle' | 'busy' | 'retry',
+    extra?: { attempt?: number; message?: string; next?: number }
+  ): void {
+    const statusPayload = { type: status, ...extra }
+    this.sendToRenderer('opencode:stream', {
+      type: 'session.status',
+      sessionId: hiveSessionId,
+      data: { status: statusPayload },
+      statusPayload
+    })
+  }
+
+  private waitForTurnCompletion(
+    session: CodexSessionState,
+    isComplete: () => boolean,
+    timeoutMs = 300_000
+  ): Promise<void> {
+    if (isComplete()) return Promise.resolve()
+
+    return new Promise<void>((resolve, reject) => {
+      const timer = setTimeout(() => {
+        cleanup()
+        reject(new Error('Turn timed out'))
+      }, timeoutMs)
+
+      const checkEvent = (event: CodexManagerEvent) => {
+        if (event.threadId !== session.threadId) return
+
+        if (event.method === 'turn/completed') {
+          cleanup()
+          resolve()
+          return
+        }
+
+        // Reject immediately on error events so prompt() doesn't hang
+        // when the Codex process crashes or enters an unrecoverable state.
+        if (event.kind === 'error') {
+          cleanup()
+          reject(new Error(event.message ?? 'Codex process error'))
+          return
+        }
+
+        const isErrorStateChange =
+          (event.method === 'session.state.changed' ||
+            event.method === 'session/state/changed') &&
+          (event.payload as Record<string, unknown> | undefined)?.state === 'error'
+
+        if (isErrorStateChange) {
+          const payload = event.payload as Record<string, unknown>
+          const reason = (payload?.reason as string)
+            ?? (payload?.error as string)
+            ?? event.message
+            ?? 'Session entered error state'
+          cleanup()
+          reject(new Error(reason))
+        }
+      }
+
+      const cleanup = () => {
+        clearTimeout(timer)
+        this.manager.removeListener('event', checkEvent)
+      }
+
+      this.manager.on('event', checkEvent)
+
+      // Check again in case it completed between the start and listener setup
+      if (isComplete()) {
+        cleanup()
+        resolve()
+      }
+    })
   }
 }

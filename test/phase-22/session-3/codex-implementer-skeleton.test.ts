@@ -150,23 +150,22 @@ describe('CodexImplementer skeleton', () => {
 
   // ── Unimplemented messaging methods throw ──────────────────────
 
-  describe('unimplemented messaging methods throw descriptive errors', () => {
-    it('prompt throws', async () => {
+  describe('implemented messaging methods', () => {
+    it('prompt throws when session not found', async () => {
       await expect(impl.prompt('/path', 'session-1', 'hello')).rejects.toThrow(
-        'CodexImplementer.prompt() not yet implemented'
+        'session not found'
       )
     })
 
-    it('abort throws', async () => {
+    it('abort throws (not yet implemented)', async () => {
       await expect(impl.abort('/path', 'session-1')).rejects.toThrow(
         'CodexImplementer.abort() not yet implemented'
       )
     })
 
-    it('getMessages throws', async () => {
-      await expect(impl.getMessages('/path', 'session-1')).rejects.toThrow(
-        'CodexImplementer.getMessages() not yet implemented'
-      )
+    it('getMessages returns empty array for unknown session', async () => {
+      const messages = await impl.getMessages('/path', 'session-1')
+      expect(messages).toEqual([])
     })
   })
 
