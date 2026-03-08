@@ -136,7 +136,7 @@ interface SettingsState extends AppSettings {
   isLoading: boolean
 
   // Cached SDK availability (non-persisted, re-detected each launch)
-  availableAgentSdks: { opencode: boolean; claude: boolean } | null
+  availableAgentSdks: { opencode: boolean; claude: boolean; codex: boolean } | null
 
   // Actions
   openSettings: (section?: string) => void

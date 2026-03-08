@@ -897,7 +897,14 @@ export function SessionTabs(): React.JSX.Element | null {
               New Claude Code Session
             </ContextMenuItem>
           )}
-          {(availableAgentSdks?.opencode || availableAgentSdks?.claude) && <ContextMenuSeparator />}
+          {availableAgentSdks?.codex && (
+            <ContextMenuItem onSelect={() => handleCreateSessionWithSdk('codex')}>
+              New Codex Session
+            </ContextMenuItem>
+          )}
+          {(availableAgentSdks?.opencode
+            || availableAgentSdks?.claude
+            || availableAgentSdks?.codex) && <ContextMenuSeparator />}
           <ContextMenuItem onSelect={() => handleCreateSessionWithSdk('terminal')}>
             <TerminalSquare className="h-4 w-4 mr-2 text-emerald-500" />
             New Terminal

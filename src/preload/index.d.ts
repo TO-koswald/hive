@@ -395,7 +395,7 @@ declare global {
         logs: string
       }>
       isLogMode: () => Promise<boolean>
-      detectAgentSdks: () => Promise<{ opencode: boolean; claude: boolean }>
+      detectAgentSdks: () => Promise<{ opencode: boolean; claude: boolean; codex: boolean }>
       quitApp: () => Promise<void>
       openInApp: (appName: string, path: string) => Promise<{ success: boolean; error?: string }>
       openInChrome: (
