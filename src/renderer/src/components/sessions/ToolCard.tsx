@@ -739,10 +739,13 @@ const CompactFileToolCard = memo(function CompactFileToolCard({
 }): React.JSX.Element {
   const [isExpanded, setIsExpanded] = useState(false)
 
+  const lowerName = toolUse.name.toLowerCase()
   const isSearch = isSearchOperation(toolUse.name)
   const isSkill = isSkillTool(toolUse.name)
   const isLsp = isLspTool(toolUse.name)
   const isFigma = isFigmaTool(toolUse.name)
+  const isBash = lowerName.includes('bash') || lowerName.includes('shell') || lowerName.includes('exec') || lowerName.includes('command')
+  const command = (toolUse.input.command || toolUse.input.cmd || '') as string
   const filePath = (toolUse.input.filePath ||
     toolUse.input.file_path ||
     toolUse.input.path ||
@@ -754,7 +757,7 @@ const CompactFileToolCard = memo(function CompactFileToolCard({
     : shortPath
   const isRunning = toolUse.status === 'pending' || toolUse.status === 'running'
   const isError = toolUse.status === 'error'
-  const hasOutput = !!(toolUse.output || toolUse.error)
+  const hasOutput = !!(toolUse.output || toolUse.error || (isBash && command))
 
   const Renderer = useMemo(() => getToolRenderer(toolUse.name), [toolUse.name])
 
@@ -823,6 +826,14 @@ const CompactFileToolCard = memo(function CompactFileToolCard({
       {/* Expanded content */}
       {isExpanded && hasOutput && (
         <div className="ml-5 mt-0.5 mb-1" data-testid="tool-output">
+          {/* Show full command for bash tools */}
+          {isBash && command && (
+            <div className="mb-2 text-xs">
+              <div className="font-mono text-muted-foreground whitespace-pre-wrap break-all bg-muted/30 rounded px-2 py-1.5 max-h-32 overflow-y-auto">
+                <span className="text-green-500">$</span> {command}
+              </div>
+            </div>
+          )}
           <Renderer
             name={toolUse.name}
             input={toolUse.input}
@@ -856,7 +867,10 @@ export const ToolCard = memo(function ToolCard({
     return null
   }, [toolUse.startTime, toolUse.endTime])
 
-  const hasOutput = !!(toolUse.output || toolUse.error)
+  const lowerName = toolUse.name.toLowerCase()
+  const isBash = lowerName.includes('bash') || lowerName.includes('shell') || lowerName.includes('exec') || lowerName.includes('command')
+  const command = (toolUse.input.command || toolUse.input.cmd || '') as string
+  const hasOutput = !!(toolUse.output || toolUse.error || (isBash && command))
   const isExitPlanMode = toolUse.name.toLowerCase() === 'exitplanmode'
 
   // Fallback: if toolUse.input.plan is missing, check the pending plan store.
@@ -1112,6 +1126,14 @@ export const ToolCard = memo(function ToolCard({
           data-testid="tool-output"
         >
           <div className={cn('border-t border-border', compact ? 'px-2 py-1.5' : 'px-2.5 py-2')}>
+            {/* Show full command for bash tools */}
+            {isBash && command && (
+              <div className="mb-2 text-xs">
+                <div className="font-mono text-muted-foreground whitespace-pre-wrap break-all bg-muted/30 rounded px-2 py-1.5 max-h-32 overflow-y-auto">
+                  <span className="text-green-500">$</span> {command}
+                </div>
+              </div>
+            )}
             <Renderer
               name={toolUse.name}
               input={toolUse.input}
