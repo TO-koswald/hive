@@ -346,29 +346,10 @@ export function ConnectionItem({
                   // Ignore blur events that happen too soon after starting rename (menu closing)
                   const timeSinceStart = Date.now() - renameStartTimeRef.current
                   if (timeSinceStart < 500) {
-                    // Re-focus only if focus didn't move to another interactive element
+                    // Always refocus during the first 500ms (menu closing period)
+                    // User can press Escape to cancel if needed
                     setTimeout(() => {
-                      const activeEl = document.activeElement
-
-                      // Don't check if the rename input itself has focus
-                      if (activeEl === renameInputRef.current) {
-                        return
-                      }
-
-                      const isInteractive =
-                        activeEl instanceof HTMLInputElement ||
-                        activeEl instanceof HTMLButtonElement ||
-                        activeEl instanceof HTMLAnchorElement ||
-                        activeEl?.getAttribute('role') === 'button'
-
-                      // If focus is on another interactive element, respect the user's navigation
-                      if (isInteractive) {
-                        setIsRenaming(false)
-                        return
-                      }
-
-                      // Otherwise re-focus (likely menu close blur)
-                      if (renameInputRef.current) {
+                      if (renameInputRef.current && document.activeElement !== renameInputRef.current) {
                         renameInputRef.current.focus()
                         renameInputRef.current.select()
                       }
