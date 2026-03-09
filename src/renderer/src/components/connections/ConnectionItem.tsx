@@ -124,13 +124,13 @@ export function ConnectionItem({
   const intentionalCloseRef = useRef(false)
   const renameStartTimeRef = useRef<number>(0)
 
-  // Focus rename input when it appears (aggressive focus retention)
+  // Focus rename input when it appears (deferred to run after menu closes)
   useEffect(() => {
     if (isRenaming) {
       // Record when we started renaming
       renameStartTimeRef.current = Date.now()
 
-      // Aggressive focus function that keeps trying to focus
+      // Focus function
       const focusInput = () => {
         if (renameInputRef.current && document.activeElement !== renameInputRef.current) {
           renameInputRef.current.focus()
@@ -138,21 +138,8 @@ export function ConnectionItem({
         }
       }
 
-      // Try immediate focus
-      focusInput()
-
-      // Keep trying to focus multiple times to combat focus stealing
-      const intervals = [0, 50, 100, 150, 200, 250, 300, 400, 500]
-      const timers = intervals.map(delay =>
-        setTimeout(focusInput, delay)
-      )
-
-      // Also try with requestAnimationFrame
+      // Use requestAnimationFrame to focus after menu closes
       requestAnimationFrame(focusInput)
-
-      return () => {
-        timers.forEach(timer => clearTimeout(timer))
-      }
     }
   }, [isRenaming])
 
