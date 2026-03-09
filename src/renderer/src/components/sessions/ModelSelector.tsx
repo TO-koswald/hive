@@ -272,31 +272,32 @@ export function ModelSelector({ sessionId }: ModelSelectorProps): React.JSX.Elem
   const hasVariants = currentVariantKeys.length > 0
 
   return (
-    <DropdownMenu
-      open={dropdownOpen}
-      onOpenChange={(open) => {
-        setDropdownOpen(open)
-        if (!open) setFilter('')
-        else setTimeout(() => filterInputRef.current?.focus(), 0)
-      }}
-    >
-      <DropdownMenuTrigger asChild>
-        <button
-          className={cn(
-            'flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium transition-colors',
-            'border select-none',
-            'bg-muted/50 border-border text-muted-foreground hover:bg-muted hover:text-foreground'
-          )}
-          title="Select model"
-          aria-label={`Current model: ${displayName}. Click to change model`}
-          data-testid="model-selector"
-        >
-          {providerPrefix && (
-            <span className="text-[10px] font-semibold text-primary uppercase shrink-0">
-              {providerPrefix}
-            </span>
-          )}
-          <span className="truncate max-w-[140px]">{isLoading ? 'Loading...' : displayName}</span>
+    <div className="flex items-center gap-1.5">
+      {providerPrefix && (
+        <span className="text-[10px] font-medium text-muted-foreground uppercase shrink-0">
+          {providerPrefix}
+        </span>
+      )}
+      <DropdownMenu
+        open={dropdownOpen}
+        onOpenChange={(open) => {
+          setDropdownOpen(open)
+          if (!open) setFilter('')
+          else setTimeout(() => filterInputRef.current?.focus(), 0)
+        }}
+      >
+        <DropdownMenuTrigger asChild>
+          <button
+            className={cn(
+              'flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium transition-colors',
+              'border select-none',
+              'bg-muted/50 border-border text-muted-foreground hover:bg-muted hover:text-foreground'
+            )}
+            title="Select model"
+            aria-label={`Current model: ${displayName}. Click to change model`}
+            data-testid="model-selector"
+          >
+            <span className="truncate max-w-[140px]">{isLoading ? 'Loading...' : displayName}</span>
           {hasVariants && selectedModel?.variant && (
             <span
               className="text-[10px] font-semibold text-primary uppercase"
@@ -408,5 +409,6 @@ export function ModelSelector({ sessionId }: ModelSelectorProps): React.JSX.Elem
         )}
       </DropdownMenuContent>
     </DropdownMenu>
+    </div>
   )
 }
