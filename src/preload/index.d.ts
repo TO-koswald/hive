@@ -645,6 +645,12 @@ declare global {
         content?: string
         error?: string
       }>
+      readImageAsBase64: (filePath: string) => Promise<{
+        success: boolean
+        data?: string
+        mimeType?: string
+        error?: string
+      }>
     }
     settingsOps: {
       detectEditors: () => Promise<DetectedApp[]>
@@ -922,6 +928,16 @@ declare global {
         content: string | null
         error?: string
       }>
+      // Get raw file content as base64 from disk (for binary/image files)
+      getFileContentBase64: (
+        worktreePath: string,
+        filePath: string
+      ) => Promise<{
+        success: boolean
+        data?: string
+        mimeType?: string
+        error?: string
+      }>
       // Get remote URL for a worktree
       getRemoteUrl: (
         worktreePath: string,
@@ -972,6 +988,17 @@ declare global {
       ) => Promise<{
         success: boolean
         content?: string
+        error?: string
+      }>
+      // Get file content as base64 from a specific git ref (for binary/image files)
+      getRefContentBase64: (
+        worktreePath: string,
+        ref: string,
+        filePath: string
+      ) => Promise<{
+        success: boolean
+        data?: string
+        mimeType?: string
         error?: string
       }>
       // Stage a single hunk by applying a patch to the index

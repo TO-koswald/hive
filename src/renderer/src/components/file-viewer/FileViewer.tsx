@@ -3,8 +3,10 @@ import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
 import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism'
 import { Loader2 } from 'lucide-react'
 import { FileSearch, type SearchMatch } from './FileSearch'
+import { ImagePreview } from './ImagePreview'
 import { MarkdownRenderer } from '@/components/sessions/MarkdownRenderer'
 import { cn } from '@/lib/utils'
+import { isBinaryImageFile, isSvgFile, getImageMimeType } from '@shared/types/file-utils'
 
 // Map file extensions to Prism language identifiers
 const extensionToLanguage: Record<string, string> = {
@@ -97,6 +99,7 @@ interface FileViewerProps {
 
 export function FileViewer({ filePath }: FileViewerProps): React.JSX.Element {
   const [content, setContent] = useState<string | null>(null)
+  const [imageDataUri, setImageDataUri] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [searchOpen, setSearchOpen] = useState(false)
@@ -105,7 +108,11 @@ export function FileViewer({ filePath }: FileViewerProps): React.JSX.Element {
   const containerRef = useRef<HTMLDivElement>(null)
 
   const isMarkdown = isMarkdownFile(filePath)
-  const [viewMode, setViewMode] = useState<'preview' | 'source'>(isMarkdown ? 'preview' : 'source')
+  const isBinaryImage = isBinaryImageFile(filePath)
+  const isSvg = isSvgFile(filePath)
+  const [viewMode, setViewMode] = useState<'preview' | 'source'>(
+    isMarkdown || isSvg ? 'preview' : 'source'
+  )
 
   // Load file content
   useEffect(() => {
@@ -113,32 +120,56 @@ export function FileViewer({ filePath }: FileViewerProps): React.JSX.Element {
     setIsLoading(true)
     setError(null)
     setContent(null)
+    setImageDataUri(null)
     setSearchOpen(false)
     setHighlightLines(new Set())
     setCurrentMatchLine(null)
 
-    window.fileOps.readFile(filePath).then((result) => {
-      if (cancelled) return
-      if (result.success && result.content !== undefined) {
-        setContent(result.content)
-      } else {
-        setError(result.error || 'Failed to read file')
-      }
-      setIsLoading(false)
-    })
+    if (isBinaryImage) {
+      const mimeType = getImageMimeType(filePath) || 'image/png'
+      window.fileOps.readImageAsBase64(filePath).then((result) => {
+        if (cancelled) return
+        if (result.success && result.data) {
+          setImageDataUri(`data:${mimeType};base64,${result.data}`)
+        } else {
+          setError(result.error || 'Failed to read image')
+        }
+        setIsLoading(false)
+      })
+    } else {
+      window.fileOps.readFile(filePath).then((result) => {
+        if (cancelled) return
+        if (result.success && result.content !== undefined) {
+          setContent(result.content)
+          if (isSvg) {
+            setImageDataUri(
+              `data:image/svg+xml;base64,${btoa(unescape(encodeURIComponent(result.content)))}`
+            )
+          }
+        } else {
+          setError(result.error || 'Failed to read file')
+        }
+        setIsLoading(false)
+      })
+    }
 
     return () => {
       cancelled = true
     }
-  }, [filePath])
+  }, [filePath, isBinaryImage, isSvg])
 
   // Reset view mode when file changes
   useEffect(() => {
-    setViewMode(isMarkdownFile(filePath) ? 'preview' : 'source')
+    if (isMarkdownFile(filePath) || isSvgFile(filePath)) {
+      setViewMode('preview')
+    } else {
+      setViewMode('source')
+    }
   }, [filePath])
 
-  // Cmd+F keyboard shortcut
+  // Cmd+F keyboard shortcut (disabled for binary images which have no text)
   useEffect(() => {
+    if (isBinaryImage) return
     const handler = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key === 'f') {
         e.preventDefault()
@@ -148,7 +179,7 @@ export function FileViewer({ filePath }: FileViewerProps): React.JSX.Element {
     }
     window.addEventListener('keydown', handler, true)
     return () => window.removeEventListener('keydown', handler, true)
-  }, [])
+  }, [isBinaryImage])
 
   const handleMatchesChange = useCallback((matches: SearchMatch[], currentIndex: number) => {
     const lines = new Set<number>()
@@ -204,7 +235,7 @@ export function FileViewer({ filePath }: FileViewerProps): React.JSX.Element {
     )
   }
 
-  if (content === null) {
+  if (content === null && !imageDataUri) {
     return (
       <div className="flex-1 flex items-center justify-center">
         <p className="text-sm text-muted-foreground">No content</p>
@@ -212,12 +243,14 @@ export function FileViewer({ filePath }: FileViewerProps): React.JSX.Element {
     )
   }
 
+  const fileName = filePath.substring(filePath.lastIndexOf('/') + 1)
+
   return (
     <div className="flex-1 flex flex-col min-h-0" data-testid="file-viewer">
       {/* File path bar */}
       <div className="px-3 py-1.5 text-xs text-muted-foreground border-b border-border bg-muted/30 flex items-center justify-between">
         <span className="truncate">{filePath}</span>
-        {isMarkdown && (
+        {(isMarkdown || isSvg) && (
           <div className="flex items-center gap-1 shrink-0 ml-2">
             <button
               onClick={() => setViewMode('source')}
@@ -244,7 +277,7 @@ export function FileViewer({ filePath }: FileViewerProps): React.JSX.Element {
       </div>
 
       {/* Search overlay */}
-      {searchOpen && (
+      {searchOpen && content !== null && (
         <FileSearch
           content={content}
           onMatchesChange={handleMatchesChange}
@@ -253,17 +286,25 @@ export function FileViewer({ filePath }: FileViewerProps): React.JSX.Element {
       )}
 
       {/* Content area */}
-      {viewMode === 'preview' && isMarkdown ? (
+      {isBinaryImage && imageDataUri ? (
+        <div className="flex-1 overflow-auto" data-testid="file-viewer-image">
+          <ImagePreview src={imageDataUri} fileName={fileName} />
+        </div>
+      ) : isSvg && viewMode === 'preview' && imageDataUri ? (
+        <div className="flex-1 overflow-auto" data-testid="file-viewer-image">
+          <ImagePreview src={imageDataUri} fileName={fileName} />
+        </div>
+      ) : viewMode === 'preview' && isMarkdown ? (
         <div
           className="flex-1 overflow-auto p-6 prose prose-sm dark:prose-invert max-w-none"
           data-testid="file-viewer-markdown-preview"
         >
-          <MarkdownRenderer content={content} />
+          <MarkdownRenderer content={content!} />
         </div>
       ) : (
         <div ref={containerRef} className="flex-1 overflow-auto" data-testid="file-viewer-content">
           <SyntaxHighlighter
-            language={language}
+            language={isSvg ? 'xml' : language}
             style={oneDark}
             showLineNumbers
             wrapLines
@@ -291,7 +332,7 @@ export function FileViewer({ filePath }: FileViewerProps): React.JSX.Element {
               }
             }}
           >
-            {content}
+            {content!}
           </SyntaxHighlighter>
         </div>
       )}

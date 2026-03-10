@@ -862,6 +862,17 @@ const gitOps = {
     error?: string
   }> => ipcRenderer.invoke('git:getFileContent', { worktreePath, filePath }),
 
+  // Get raw file content as base64 from disk (for binary/image files)
+  getFileContentBase64: (
+    worktreePath: string,
+    filePath: string
+  ): Promise<{
+    success: boolean
+    data?: string
+    mimeType?: string
+    error?: string
+  }> => ipcRenderer.invoke('git:getFileContentBase64', { worktreePath, filePath }),
+
   // Get remote URL for a worktree
   getRemoteUrl: (
     worktreePath: string,
@@ -932,6 +943,18 @@ const gitOps = {
     content?: string
     error?: string
   }> => ipcRenderer.invoke('git:getRefContent', worktreePath, ref, filePath),
+
+  // Get file content as base64 from a specific git ref (for binary/image files)
+  getRefContentBase64: (
+    worktreePath: string,
+    ref: string,
+    filePath: string
+  ): Promise<{
+    success: boolean
+    data?: string
+    mimeType?: string
+    error?: string
+  }> => ipcRenderer.invoke('git:getRefContentBase64', worktreePath, ref, filePath),
 
   // Stage a single hunk by applying a patch to the index
   stageHunk: (
@@ -1325,7 +1348,11 @@ const fileOps = {
   readPrompt: (
     promptName: string
   ): Promise<{ success: boolean; content?: string; error?: string }> =>
-    ipcRenderer.invoke('file:readPrompt', promptName)
+    ipcRenderer.invoke('file:readPrompt', promptName),
+  readImageAsBase64: (
+    filePath: string
+  ): Promise<{ success: boolean; data?: string; mimeType?: string; error?: string }> =>
+    ipcRenderer.invoke('file:readImageAsBase64', filePath)
 }
 
 // Settings operations API

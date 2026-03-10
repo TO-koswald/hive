@@ -4,6 +4,7 @@ import { promisify } from 'util'
 import { readFile } from 'fs/promises'
 import { existsSync } from 'fs'
 import { join } from 'path'
+import { readFileAsBase64 } from '../services/file-ops'
 import { telemetryService } from '../services/telemetry-service'
 import { openPathWithPreferredEditor } from './settings-handlers'
 import {
@@ -521,6 +522,54 @@ export function registerGitFileHandlers(window: BrowserWindow): void {
           { worktreePath, filePath }
         )
         return { success: false, content: null, error: errMessage }
+      }
+    }
+  )
+
+  // Get raw file content from disk as base64 (for binary/image files)
+  ipcMain.handle(
+    'git:getFileContentBase64',
+    async (
+      _event,
+      { worktreePath, filePath }: { worktreePath: string; filePath: string }
+    ): Promise<{ success: boolean; data?: string; mimeType?: string; error?: string }> => {
+      log.info('Getting file content as base64', { worktreePath, filePath })
+      try {
+        const fullPath = join(worktreePath, filePath)
+        return readFileAsBase64(fullPath)
+      } catch (error) {
+        const errMessage = error instanceof Error ? error.message : String(error)
+        log.error(
+          'Failed to get file content as base64',
+          error instanceof Error ? error : new Error(errMessage),
+          { worktreePath, filePath }
+        )
+        return { success: false, error: errMessage }
+      }
+    }
+  )
+
+  // Get file content from a specific git ref as base64 (for binary/image files)
+  ipcMain.handle(
+    'git:getRefContentBase64',
+    async (
+      _event,
+      worktreePath: string,
+      ref: string,
+      filePath: string
+    ): Promise<{ success: boolean; data?: string; mimeType?: string; error?: string }> => {
+      log.info('Getting ref content as base64', { worktreePath, ref, filePath })
+      try {
+        const gitService = createGitService(worktreePath)
+        return await gitService.getRefContentBase64(ref, filePath)
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Unknown error'
+        log.error(
+          'Failed to get ref content as base64',
+          error instanceof Error ? error : new Error(message),
+          { worktreePath, ref, filePath }
+        )
+        return { success: false, error: message }
       }
     }
   )

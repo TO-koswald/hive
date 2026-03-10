@@ -2,7 +2,10 @@ import simpleGit, { SimpleGit, BranchSummary } from 'simple-git'
 import { app } from 'electron'
 import { join, basename, dirname } from 'path'
 import { existsSync, mkdirSync, rmSync, cpSync, writeFileSync, unlinkSync, readdirSync } from 'fs'
+import { execFile } from 'child_process'
+import { promisify } from 'util'
 import { tmpdir } from 'os'
+import { getImageMimeType } from '@shared/types/file-utils'
 import {
   selectUniqueBreedName,
   ALL_BREED_NAMES,
@@ -11,6 +14,7 @@ import {
 } from './breed-names'
 import { createLogger } from './logger'
 
+const execFileAsync = promisify(execFile)
 const log = createLogger({ component: 'GitService' })
 
 export interface WorktreeInfo {
@@ -929,6 +933,41 @@ export class GitService {
         filePath,
         repoPath: this.repoPath
       })
+      return { success: false, error: message }
+    }
+  }
+
+  /**
+   * Get file content from a specific git ref as base64 (for binary files like images).
+   * Uses execFile with buffer encoding to avoid corrupting binary data.
+   * @param ref - Git ref: 'HEAD' for HEAD version, '' (empty string) for index/staged version
+   * @param filePath - Relative path to the file
+   */
+  async getRefContentBase64(
+    ref: string,
+    filePath: string
+  ): Promise<{ success: boolean; data?: string; mimeType?: string; error?: string }> {
+    try {
+      const refSpec = ref ? `${ref}:${filePath}` : `:${filePath}`
+      const { stdout } = await execFileAsync('git', ['show', refSpec], {
+        encoding: 'buffer',
+        cwd: this.repoPath,
+        maxBuffer: 1024 * 1024 // 1MB limit, matching readFileAsBase64
+      })
+      const data = stdout.toString('base64')
+      const mimeType = getImageMimeType(filePath) ?? undefined
+      return { success: true, data, mimeType }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown error'
+      log.error(
+        'Failed to get ref content as base64',
+        error instanceof Error ? error : new Error(message),
+        {
+          ref,
+          filePath,
+          repoPath: this.repoPath
+        }
+      )
       return { success: false, error: message }
     }
   }

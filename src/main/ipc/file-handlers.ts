@@ -1,6 +1,6 @@
 import { ipcMain } from 'electron'
 import { createLogger } from '../services/logger'
-import { readFile, readPromptFile } from '../services/file-ops'
+import { readFile, readFileAsBase64, readPromptFile } from '../services/file-ops'
 
 const log = createLogger({ component: 'FileHandlers' })
 
@@ -20,6 +20,29 @@ export function registerFileHandlers(): void {
       const result = readFile(filePath)
       if (!result.success) {
         log.error('Failed to read file', new Error(result.error ?? 'Unknown error'), { filePath })
+      }
+      return result
+    }
+  )
+
+  ipcMain.handle(
+    'file:readImageAsBase64',
+    async (
+      _event,
+      filePath: string
+    ): Promise<{
+      success: boolean
+      data?: string
+      mimeType?: string
+      error?: string
+    }> => {
+      const result = readFileAsBase64(filePath)
+      if (!result.success) {
+        log.error(
+          'Failed to read image as base64',
+          new Error(result.error ?? 'Unknown error'),
+          { filePath }
+        )
       }
       return result
     }
