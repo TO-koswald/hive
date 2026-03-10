@@ -53,3 +53,6 @@ vendor/
 
 # Local debug/playground scripts
 scripts/
+
+# Claude worktrees
+.claude/worktrees/
