@@ -19,6 +19,7 @@ const execFileAsync = promisify(execFile)
 const MAX_COMMIT_LOG_SIZE = 20 * 1024
 const MAX_DIFF_STAT_SIZE = 20 * 1024
 const MAX_DIFF_PATCH_SIZE = 50 * 1024
+const PR_GENERATION_TIMEOUT_MS = 60_000
 
 function cap(text: string, limit: number): string {
   if (text.length <= limit) return text
@@ -103,10 +104,9 @@ function resolveAgentSdk(
 ): { sdk: 'claude-code' | 'opencode'; model: string | null } {
   const db = getDatabase()
 
-  // Check most recent session's agent_sdk for this worktree
-  const session = db
-    .getSessionsByWorktree(worktreeId)
-    .find((s) => s.agent_sdk)
+  // Use the most recent session's agent_sdk for this worktree
+  const sessions = db.getSessionsByWorktree(worktreeId)
+  const session = sessions[0]
 
   if (session?.agent_sdk) {
     const worktree = db.getWorktree(worktreeId)
@@ -129,35 +129,34 @@ async function generateViaClaudeCode(
 ): Promise<string> {
   const sdk = await loadClaudeSDK()
   const abortController = new AbortController()
+  const timeout = setTimeout(() => abortController.abort(), PR_GENERATION_TIMEOUT_MS)
 
-  const conversation = sdk.query({
-    prompt,
-    options: {
-      cwd: worktreePath,
-      permissionMode: 'plan' as const,
-      model,
-      maxThinkingTokens: 0,
-      abortController
-    }
-  }) as AsyncIterable<Record<string, unknown>>
+  try {
+    const conversation = sdk.query({
+      prompt,
+      options: {
+        cwd: worktreePath,
+        permissionMode: 'plan' as const,
+        model,
+        maxTurns: 1,
+        maxThinkingTokens: 0,
+        tools: [],
+        abortController
+      }
+    }) as AsyncIterable<Record<string, unknown>>
 
-  let result = ''
-  for await (const message of conversation) {
-    if (message.type === 'assistant') {
-      const content = message.content as
-        | Array<{ type: string; text?: string }>
-        | undefined
-      if (content) {
-        for (const block of content) {
-          if (block.type === 'text' && block.text) {
-            result += block.text
-          }
-        }
+    let result = ''
+    for await (const msg of conversation) {
+      if (msg.type === 'result') {
+        result = (msg as { result?: string }).result ?? ''
+        break
       }
     }
-  }
 
-  return result
+    return result
+  } finally {
+    clearTimeout(timeout)
+  }
 }
 
 // ── OpenCode path ─────────────────────────────────────────────────
@@ -166,8 +165,7 @@ async function generateViaOpenCode(
   prompt: string,
   worktreePath: string
 ): Promise<string> {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const client = (openCodeService as any).instance?.client
+  const client = openCodeService.getClient()
   if (!client) {
     throw new Error('No OpenCode instance available')
   }
@@ -321,10 +319,11 @@ export async function createPR(params: {
   const gitService = createGitService(worktreePath)
 
   try {
+    const branchName = await gitService.getCurrentBranch()
+
     // If title or body empty, generate via AI
     if (!title.trim() || !body.trim()) {
       log.info('Title or body empty, generating via AI')
-      const branchName = await gitService.getCurrentBranch()
       const generated = await generatePRContent({
         worktreePath,
         worktreeId,
@@ -335,7 +334,6 @@ export async function createPR(params: {
       if (!body.trim()) body = generated.body
     }
 
-    const branchName = await gitService.getCurrentBranch()
     const ghEnv = { ...process.env, GH_PROMPT_DISABLED: '1' }
 
     // Check for existing PR on this branch

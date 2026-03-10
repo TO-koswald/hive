@@ -1407,6 +1407,14 @@ class OpenCodeService {
   }
 
   /**
+   * Get the OpenCode SDK client, if an instance is available.
+   * Returns null when no OpenCode server is running.
+   */
+  getClient(): OpencodeClient | null {
+    return this.instance?.client ?? null
+  }
+
+  /**
    * Cleanup the OpenCode instance
    */
   async cleanup(): Promise<void> {
