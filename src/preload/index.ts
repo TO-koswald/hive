@@ -979,7 +979,44 @@ const gitOps = {
     success: boolean
     diff?: string
     error?: string
-  }> => ipcRenderer.invoke('git:branchFileDiff', worktreePath, branch, filePath)
+  }> => ipcRenderer.invoke('git:branchFileDiff', worktreePath, branch, filePath),
+
+  // Get diff stat (additions/deletions per file) between current branch and a base branch
+  getBranchDiffStat: (
+    worktreePath: string,
+    baseBranch: string
+  ): Promise<{
+    success: boolean
+    files?: Array<{
+      path: string
+      additions: number
+      deletions: number
+      binary: boolean
+    }>
+    error?: string
+  }> => ipcRenderer.invoke('git:branchDiffStat', worktreePath, baseBranch),
+
+  // Create a pull request on GitHub
+  prCreate: (
+    params: {
+      worktreePath: string
+      worktreeId: string
+      title: string
+      body: string
+      baseBranch: string
+    }
+  ): Promise<{ success: boolean; prNumber?: number; prUrl?: string; error?: string }> =>
+    ipcRenderer.invoke('git:prCreate', params),
+
+  // Generate PR title and body via AI
+  generatePRContent: (
+    params: {
+      worktreePath: string
+      worktreeId: string
+      baseBranch: string
+    }
+  ): Promise<{ success: boolean; title?: string; body?: string; error?: string }> =>
+    ipcRenderer.invoke('git:generatePRContent', params)
 }
 
 const opencodeOps = {

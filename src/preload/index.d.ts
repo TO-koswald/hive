@@ -1017,6 +1017,39 @@ declare global {
         diff?: string
         error?: string
       }>
+      // Get diff stat (additions/deletions per file) between current branch and a base branch
+      getBranchDiffStat: (
+        worktreePath: string,
+        baseBranch: string
+      ) => Promise<{
+        success: boolean
+        files?: GitDiffStatFile[]
+        error?: string
+      }>
+      // Create a pull request on GitHub
+      prCreate: (params: {
+        worktreePath: string
+        worktreeId: string
+        title: string
+        body: string
+        baseBranch: string
+      }) => Promise<{
+        success: boolean
+        prNumber?: number
+        prUrl?: string
+        error?: string
+      }>
+      // Generate PR title and body via AI
+      generatePRContent: (params: {
+        worktreePath: string
+        worktreeId: string
+        baseBranch: string
+      }) => Promise<{
+        success: boolean
+        title?: string
+        body?: string
+        error?: string
+      }>
     }
     updaterOps: {
       checkForUpdate: (options?: { manual?: boolean }) => Promise<void>

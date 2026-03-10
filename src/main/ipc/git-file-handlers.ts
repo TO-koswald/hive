@@ -34,6 +34,7 @@ import {
   unwatchBranch,
   cleanupBranchWatchers
 } from '../services/branch-watcher'
+import { createPR, generatePRContent } from '../services/pr-service'
 
 const execAsync = promisify(exec)
 
@@ -760,7 +761,7 @@ export function registerGitFileHandlers(window: BrowserWindow): void {
       _event,
       worktreePath: string,
       baseBranch: string
-    ): Promise<{ success: boolean; files?: GitDiffStatFile[]; error?: string }> => {
+    ): Promise<GitDiffStatResult> => {
       try {
         const gitService = createGitService(worktreePath)
         return await gitService.getBranchDiffStat(baseBranch)
@@ -858,6 +859,65 @@ export function registerGitFileHandlers(window: BrowserWindow): void {
           }
         }
         return { success: false, prs: [], error: message }
+      }
+    }
+  )
+
+  // Create a pull request on GitHub
+  ipcMain.handle(
+    'git:prCreate',
+    async (
+      _event,
+      params: {
+        worktreePath: string
+        worktreeId: string
+        title: string
+        body: string
+        baseBranch: string
+      }
+    ): Promise<{ success: boolean; prNumber?: number; prUrl?: string; error?: string }> => {
+      log.info('Creating PR', { worktreePath: params.worktreePath, baseBranch: params.baseBranch })
+      try {
+        return await createPR(params)
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Unknown error'
+        log.error('Failed to create PR', error instanceof Error ? error : new Error(message), {
+          worktreePath: params.worktreePath,
+          baseBranch: params.baseBranch
+        })
+        return { success: false, error: message }
+      }
+    }
+  )
+
+  // Generate PR title and body via AI
+  ipcMain.handle(
+    'git:generatePRContent',
+    async (
+      _event,
+      params: {
+        worktreePath: string
+        worktreeId: string
+        baseBranch: string
+      }
+    ): Promise<{ success: boolean; title?: string; body?: string; error?: string }> => {
+      log.info('Generating PR content', {
+        worktreePath: params.worktreePath,
+        baseBranch: params.baseBranch
+      })
+      try {
+        const gitService = createGitService(params.worktreePath)
+        const headBranch = await gitService.getCurrentBranch()
+        const result = await generatePRContent({ ...params, headBranch })
+        return { success: true, title: result.title, body: result.body }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Unknown error'
+        log.error(
+          'Failed to generate PR content',
+          error instanceof Error ? error : new Error(message),
+          { worktreePath: params.worktreePath, baseBranch: params.baseBranch }
+        )
+        return { success: false, error: message }
       }
     }
   )
