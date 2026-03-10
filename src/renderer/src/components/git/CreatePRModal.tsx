@@ -104,26 +104,29 @@ export function CreatePRModal({
   // Fetch diff stat when open or target branch changes
   useEffect(() => {
     if (!open || !targetBranch) return
-
+    let cancelled = false
     setIsLoading(true)
     setError(null)
     window.gitOps
       .getBranchDiffStat(worktreePath, targetBranch)
       .then((result) => {
+        if (cancelled) return
         if (result.success && result.files) {
           setFiles(result.files)
         } else {
+          setError(result.error || 'Failed to load file changes')
           setFiles([])
-          setError(result.error || 'Failed to load diff')
         }
       })
       .catch((err) => {
+        if (cancelled) return
+        setError(err instanceof Error ? err.message : 'Failed to load file changes')
         setFiles([])
-        setError(err instanceof Error ? err.message : 'Failed to load diff')
       })
       .finally(() => {
-        setIsLoading(false)
+        if (!cancelled) setIsLoading(false)
       })
+    return () => { cancelled = true }
   }, [open, targetBranch, worktreePath])
 
   const handleCreate = async (): Promise<void> => {
@@ -241,6 +244,7 @@ export function CreatePRModal({
           onChange={(e) => setTitle(e.target.value)}
           placeholder="PR title (leave empty to auto-generate)"
           disabled={isCreating}
+          aria-label="Pull request title"
         />
 
         {/* Body Textarea */}
@@ -250,6 +254,7 @@ export function CreatePRModal({
           placeholder="Description (leave empty to auto-generate)"
           rows={6}
           disabled={isCreating}
+          aria-label="Pull request description"
         />
 
         {/* Hint */}
