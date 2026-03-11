@@ -2028,6 +2028,7 @@ export class ClaudeCodeImplementer implements AgentSdkImplementer {
 
     // Block execution with a Promise that waits for user response
     // Add 5-minute timeout to prevent infinite waiting if dialog fails to show
+    let timeoutHandle: NodeJS.Timeout | undefined
     const userResponse = await Promise.race([
       new Promise<{
         approved: boolean
@@ -2036,7 +2037,11 @@ export class ClaudeCodeImplementer implements AgentSdkImplementer {
         patterns?: string[]
       }>((resolve) => {
         this.pendingApprovals.set(requestId, {
-          resolve: (response) => resolve(response),
+          resolve: (response) => {
+            // Clear timeout on user response
+            if (timeoutHandle) clearTimeout(timeoutHandle)
+            resolve(response)
+          },
           toolName,
           input,
           commandStr
@@ -2048,6 +2053,7 @@ export class ClaudeCodeImplementer implements AgentSdkImplementer {
             log.info('handleCommandApproval: session aborted while approval pending, auto-denying', {
               requestId
             })
+            if (timeoutHandle) clearTimeout(timeoutHandle)
             this.pendingApprovals.delete(requestId)
             resolve({ approved: false })
           }
@@ -2056,7 +2062,7 @@ export class ClaudeCodeImplementer implements AgentSdkImplementer {
       }),
       // 5-minute timeout - auto-deny if no response
       new Promise<{ approved: boolean }>((resolve) => {
-        setTimeout(() => {
+        timeoutHandle = setTimeout(() => {
           if (this.pendingApprovals.has(requestId)) {
             log.warn('handleCommandApproval: timeout waiting for user response, auto-denying', {
               requestId,

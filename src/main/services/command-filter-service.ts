@@ -83,8 +83,9 @@ export class CommandFilterService {
       }
 
       // Track closing ) of command substitution
-      // Only decrease depth when not in quotes
-      if (char === ')' && parenDepth > 0 && !inSingleQuote && !inDoubleQuote) {
+      // Command substitutions work inside double quotes, so always decrement when we see )
+      // Only skip if in single quotes (single quotes prevent all substitution)
+      if (char === ')' && parenDepth > 0 && !inSingleQuote) {
         parenDepth--
         current += char
         i++

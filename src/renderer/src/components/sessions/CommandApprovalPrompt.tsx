@@ -226,7 +226,9 @@ function splitBashForDisplay(
       continue
     }
 
-    if (char === ')' && parenDepth > 0 && !inSingleQuote && !inDoubleQuote) {
+    // Command substitutions work inside double quotes, so always decrement
+    // Only skip if in single quotes (single quotes prevent all substitution)
+    if (char === ')' && parenDepth > 0 && !inSingleQuote) {
       parenDepth--
       current += char
       i++
