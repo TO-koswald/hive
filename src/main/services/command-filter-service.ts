@@ -375,6 +375,9 @@ export class CommandFilterService {
   /**
    * Generate progressive bash command pattern suggestions for a SINGLE command (no &&).
    * Used internally by both generateBashSuggestions and generateSubCommandSuggestions.
+   *
+   * For long commands (>5 words), limits to first 4 patterns (exact + 3 wildcard levels)
+   * to avoid overwhelming the user with too many options.
    */
   private generateSingleCommandSuggestions(commandStr: string): string[] {
     const prefix = 'bash: '
@@ -388,12 +391,18 @@ export class CommandFilterService {
 
     const suggestions: string[] = [commandStr]
 
+    // For long commands, limit to 3 wildcard levels to keep the list manageable
+    // e.g. "gh pr create --title ... --body ..." → ["exact", "gh pr create *", "gh pr *", "gh *"]
+    const MAX_WILDCARD_LEVELS = parts.length > 5 ? 3 : parts.length - 1
+
     // Generate progressively broader patterns by trimming from the right
     // e.g. "gcloud compute list --project x" → "gcloud compute list *" → "gcloud compute *" → "gcloud *"
-    for (let i = parts.length - 1; i >= 1; i--) {
+    let levelsAdded = 0
+    for (let i = parts.length - 1; i >= 1 && levelsAdded < MAX_WILDCARD_LEVELS; i--) {
       const pattern = `${prefix}${parts.slice(0, i).join(' ')} *`
       if (!suggestions.includes(pattern)) {
         suggestions.push(pattern)
+        levelsAdded++
       }
     }
 
