@@ -33,11 +33,24 @@ jobs:
       - name: Package Windows exe
         run: pnpm exec electron-builder --win --publish never
 
-      - name: Upload Windows artifacts
-        uses: actions/upload-artifact@v4
+      - name: Get version
+        id: version
+        shell: bash
+        run: echo "version=$(node -p "require('./package.json').version")" >> "$GITHUB_OUTPUT"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
         with:
-          name: hive-windows
-          path: |
+          tag_name: win-v${{ steps.version.outputs.version }}-${{ github.run_number }}
+          name: Windows v${{ steps.version.outputs.version }} (build ${{ github.run_number }})
+          body: |
+            Windows build from commit ${{ github.sha }}
+
+            Built on `main` push — run #${{ github.run_number }}
+          draft: false
+          prerelease: false
+          files: |
             dist/*.exe
             dist/*.yaml
-          retention-days: 30
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
