@@ -1,4 +1,5 @@
 import { useCallback, useState, useRef, useEffect } from 'react'
+import { revealLabel } from '@/lib/platform'
 import {
   AlertCircle,
   GitBranch,
@@ -666,7 +667,7 @@ export function WorktreeItem({
               </DropdownMenuItem>
               <DropdownMenuItem onClick={handleOpenInFinder}>
                 <ExternalLink className="h-4 w-4 mr-2" />
-                Open in Finder
+                {revealLabel(true)}
               </DropdownMenuItem>
               <DropdownMenuItem onClick={handleCopyPath}>
                 <Copy className="h-4 w-4 mr-2" />

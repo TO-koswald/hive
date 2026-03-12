@@ -156,8 +156,8 @@ export function UsageIndicator(): React.JSX.Element | null {
             </div>
             {activeProvider === 'anthropic' && extra?.is_enabled && (
               <div className="border-t border-background/20 pt-1 text-[10px]">
-                Extra: ${extra.used_credits.toFixed(2)} / ${extra.monthly_limit.toFixed(2)} used (
-                {Math.round(extra.utilization)}%)
+                Extra: ${(extra.used_credits ?? 0).toFixed(2)} / ${(extra.monthly_limit ?? 0).toFixed(2)} used (
+                {Math.round(extra.utilization ?? 0)}%)
               </div>
             )}
           </div>

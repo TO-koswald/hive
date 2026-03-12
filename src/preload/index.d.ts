@@ -419,6 +419,7 @@ declare global {
       isPackaged: () => Promise<boolean>
       installServerToPath: () => Promise<{ success: boolean; path?: string; error?: string }>
       uninstallServerFromPath: () => Promise<{ success: boolean; error?: string }>
+      getPlatform: () => Promise<string>
     }
     loggingOps: {
       createResponseLog: (sessionId: string) => Promise<string>
