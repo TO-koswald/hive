@@ -280,7 +280,9 @@ export class GitService {
         // Also scan the filesystem to catch path collisions from incomplete cleanups
         let existingDirs: string[] = []
         try {
-          existingDirs = readdirSync(projectWorktreesDir)
+          existingDirs = readdirSync(projectWorktreesDir).map(
+            (d) => d.startsWith(`${projectName}--`) ? d.slice(projectName.length + 2) : d
+          )
         } catch {
           // directory may not exist yet; ignore
         }
@@ -294,7 +296,7 @@ export class GitService {
 
         // Select a unique breed name
         const breedName = selectUniqueBreedName(existingNames, breedType)
-        const worktreePath = join(projectWorktreesDir, breedName)
+        const worktreePath = join(projectWorktreesDir, `${projectName}--${breedName}`)
 
         // Create the worktree with a new branch
         await this.git.raw(['worktree', 'add', '-b', breedName, worktreePath, defaultBranch])
@@ -1079,7 +1081,7 @@ export class GitService {
           }
         }
         newBranchName = `${baseName}-v${maxVersion + 1}`
-        worktreePath = join(projectWorktreesDir, newBranchName)
+        worktreePath = join(projectWorktreesDir, `${projectName}--${newBranchName}`)
 
         try {
           await this.git.raw(['worktree', 'add', '-b', newBranchName, worktreePath, sourceBranch])
@@ -1290,7 +1292,9 @@ export class GitService {
         // Also scan the filesystem to catch path collisions from incomplete cleanups
         let existingDirs: string[] = []
         try {
-          existingDirs = readdirSync(projectWorktreesDir)
+          existingDirs = readdirSync(projectWorktreesDir).map(
+            (d) => d.startsWith(`${projectName}--`) ? d.slice(projectName.length + 2) : d
+          )
         } catch {
           // directory may not exist yet; ignore
         }
@@ -1303,7 +1307,7 @@ export class GitService {
 
         // Select a unique breed name
         const breedName = selectUniqueBreedName(existingNames, breedType)
-        const worktreePath = join(projectWorktreesDir, breedName)
+        const worktreePath = join(projectWorktreesDir, `${projectName}--${breedName}`)
 
         try {
           if (prNumber != null) {
