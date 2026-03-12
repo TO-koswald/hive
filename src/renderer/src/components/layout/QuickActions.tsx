@@ -1,4 +1,5 @@
 import { Copy, Check, FolderOpen, GitBranch, Terminal, Code } from 'lucide-react'
+import { fileManagerName } from '@/lib/platform'
 import { useState, useCallback } from 'react'
 import { Button } from '@/components/ui/button'
 import { useWorktreeStore } from '@/stores/useWorktreeStore'
@@ -214,11 +215,11 @@ export function QuickActions(): React.JSX.Element | null {
         className="h-7 px-2 gap-1.5 text-xs cursor-pointer"
         disabled={disabled}
         onClick={() => handleAction('finder')}
-        title="Reveal in Finder"
+        title={`Reveal in ${fileManagerName()}`}
         data-testid="quick-action-finder"
       >
         <FolderOpen className="h-3.5 w-3.5" />
-        <span>Finder</span>
+        <span>{fileManagerName()}</span>
       </Button>
       {branchName && (
         <Button

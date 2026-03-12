@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
+import { revealLabel } from '@/lib/platform'
 import {
   ChevronRight,
   Plus,
@@ -339,7 +340,7 @@ export function ProjectItem({
             </ContextMenuItem>
             <ContextMenuItem onClick={handleOpenInFinder}>
               <ExternalLink className="h-4 w-4 mr-2" />
-              Open in Finder
+              {revealLabel(true)}
             </ContextMenuItem>
             <ContextMenuItem onClick={handleCopyPath}>
               <Copy className="h-4 w-4 mr-2" />

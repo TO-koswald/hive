@@ -496,7 +496,10 @@ const systemOps = {
 
   // Uninstall hive-server CLI from /usr/local/bin (requires admin elevation)
   uninstallServerFromPath: (): Promise<{ success: boolean; error?: string }> =>
-    ipcRenderer.invoke('system:uninstallServerFromPath')
+    ipcRenderer.invoke('system:uninstallServerFromPath'),
+
+  // Get the current platform (darwin, win32, linux)
+  getPlatform: (): Promise<string> => ipcRenderer.invoke('system:getPlatform')
 }
 
 // Response logging operations API (only functional when --log is active)

@@ -96,7 +96,9 @@ if (typeof window !== 'undefined') {
         onFileSearchShortcut: vi.fn().mockReturnValue(() => {}),
         onNotificationNavigate: vi.fn().mockReturnValue(() => {}),
         onWindowFocused: vi.fn().mockReturnValue(() => {}),
-        updateMenuState: vi.fn().mockResolvedValue(undefined)
+        updateMenuState: vi.fn().mockResolvedValue(undefined),
+        isPackaged: vi.fn().mockResolvedValue(false),
+        getPlatform: vi.fn().mockResolvedValue('darwin')
       }
     })
   }

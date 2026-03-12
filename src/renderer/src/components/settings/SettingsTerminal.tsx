@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { isMac as isMacPlatform } from '@/lib/platform'
 import {
   useSettingsStore,
   type TerminalOption,
@@ -252,7 +253,7 @@ export function SettingsTerminal(): React.JSX.Element {
             <Input
               value={customTerminalCommand}
               onChange={(e) => updateSetting('customTerminalCommand', e.target.value)}
-              placeholder="e.g., /usr/local/bin/alacritty"
+              placeholder={isMacPlatform() ? 'e.g., /usr/local/bin/alacritty' : 'e.g., C:\\Program Files\\Alacritty\\alacritty.exe'}
               className="font-mono text-sm"
               data-testid="custom-terminal-command"
             />
