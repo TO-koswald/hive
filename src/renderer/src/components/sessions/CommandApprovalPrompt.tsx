@@ -328,7 +328,7 @@ function CommandDisplay({ commandStr }: { commandStr: string }) {
             <div className="flex items-center gap-1 py-0.5 px-2">
               <div className="h-px flex-1 bg-border/40" />
               <span className="text-[10px] font-mono text-muted-foreground/60">
-                {part.separator}
+                {part.separator === 'newline' ? '↵' : part.separator}
               </span>
               <div className="h-px flex-1 bg-border/40" />
             </div>
