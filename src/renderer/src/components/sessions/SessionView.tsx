@@ -426,9 +426,15 @@ export function SessionView({ sessionId }: SessionViewProps): React.JSX.Element 
   const [streamingParts, setStreamingParts] = useState<StreamingPart[]>([])
   const streamingPartsRef = useRef<StreamingPart[]>([])
 
-  // When non-null, text deltas are routed into this ExitPlanMode tool card
-  // instead of regular text parts. Stores the temporary tool_use ID.
-  const planCardRoutingRef = useRef<string | null>(null)
+  // XML tag detection state for Codex plan streaming.
+  // In plan mode, Codex wraps plan content in <proposed_plan>...</proposed_plan>.
+  // We scan the stream for these tags and route only the plan content into an
+  // ExitPlanMode tool card, leaving reasoning/preamble as regular chat text.
+  const planXmlDetectionRef = useRef<{
+    state: 'scanning' | 'routing' | 'done'
+    buffer: string // partial-tag buffer (≤ tag length chars)
+    cardId: string | null
+  }>({ state: 'scanning', buffer: '', cardId: null })
 
   // Legacy streaming content for backward compatibility
   const [streamingContent, setStreamingContent] = useState<string>('')
@@ -917,7 +923,7 @@ export function SessionView({ sessionId }: SessionViewProps): React.JSX.Element 
     setStreamingContent('')
     setIsStreaming(false)
     lastSentPromptRef.current = null
-    planCardRoutingRef.current = null
+    planXmlDetectionRef.current = { state: 'scanning', buffer: '', cardId: null }
   }, [])
 
   // Load session info and connect to OpenCode
@@ -1186,7 +1192,7 @@ export function SessionView({ sessionId }: SessionViewProps): React.JSX.Element 
     setStreamingParts([])
     setStreamingContent('')
     hasFinalizedCurrentResponseRef.current = false
-    planCardRoutingRef.current = null
+    planXmlDetectionRef.current = { state: 'scanning', buffer: '', cardId: null }
 
     // Subscribe to OpenCode stream events SYNCHRONOUSLY before any async work.
     // This prevents a race condition where session.idle arrives during async
@@ -1372,12 +1378,22 @@ export function SessionView({ sessionId }: SessionViewProps): React.JSX.Element 
                 }
               }
 
-              // If we were progressively routing text into a streaming card, finalize it
-              const streamingCardId = planCardRoutingRef.current
-              if (streamingCardId) {
-                planCardRoutingRef.current = null
+              // Finalize the streaming plan card (if XML tag detection created one)
+              // or create a new one from plan.ready data (fallback for Claude Code /
+              // sessions where <proposed_plan> tags weren't present).
+              const det = planXmlDetectionRef.current
+              const streamingCardId = det.cardId
 
-                // Replace streaming text with clean plan text + real toolUseID
+              // Flush any leftover scanning buffer as regular text
+              if (det.buffer) {
+                appendTextDelta(det.buffer)
+                det.buffer = ''
+              }
+              // Reset detection state
+              planXmlDetectionRef.current = { state: 'scanning', buffer: '', cardId: null }
+
+              if (streamingCardId) {
+                // Progressive card exists — finalize with clean plan text + real ID
                 updateStreamingPartsRef((parts) =>
                   parts.map((p) => {
                     if (p.type !== 'tool_use' || p.toolUse?.id !== streamingCardId) return p
@@ -1395,8 +1411,7 @@ export function SessionView({ sessionId }: SessionViewProps): React.JSX.Element 
                 )
                 immediateFlush()
               } else {
-                // Fallback: strip XML from text parts and inject/update card
-                // (for Claude Code sessions or when progressive rendering wasn't active)
+                // No progressive card — strip XML from text parts and inject card
                 updateStreamingPartsRef((parts) =>
                   parts.map((p) => {
                     if (p.type !== 'text' || !p.text) return p
@@ -1602,56 +1617,132 @@ export function SessionView({ sessionId }: SessionViewProps): React.JSX.Element 
             if (part.type === 'text') {
               const delta = event.data?.delta
 
-              // Codex plan mode: route text into ExitPlanMode card.
-              // agent_sdk is immutable per session and always populated by the
-              // time streaming starts (the session must exist to send a prompt).
+              // Codex plan mode: scan for <proposed_plan> XML tags and route
+              // only the plan content into an ExitPlanMode card. Text before/
+              // after the tags renders as normal chat text.
               const isCodexPlan =
                 sessionRecord?.agent_sdk === 'codex' &&
                 useSessionStore.getState().getSessionMode(sessionId) === 'plan'
 
               if (isCodexPlan) {
-                const textToRoute = delta || part.text || ''
-                if (!textToRoute) {
-                  setIsStreaming(true)
-                } else if (!planCardRoutingRef.current) {
-                  // First text delta — create placeholder ExitPlanMode card
-                  const tempId = `codex-plan-streaming-${Date.now()}`
-                  planCardRoutingRef.current = tempId
-                  updateStreamingPartsRef((parts) => [
-                    ...parts,
-                    {
-                      type: 'tool_use' as const,
-                      toolUse: {
-                        id: tempId,
-                        name: 'ExitPlanMode',
-                        input: { plan: textToRoute },
-                        status: 'running' as const,
-                        startTime: Date.now()
-                      }
-                    }
-                  ])
-                  immediateFlush()
+                const textDelta = delta || part.text || ''
+                if (!textDelta) {
                   setIsStreaming(true)
                 } else {
-                  // Subsequent deltas — append to card's input.plan
-                  const toolId = planCardRoutingRef.current
-                  updateStreamingPartsRef((parts) =>
-                    parts.map((p) =>
-                      p.type === 'tool_use' && p.toolUse?.id === toolId
-                        ? {
-                            ...p,
-                            toolUse: {
-                              ...p.toolUse!,
-                              input: {
-                                ...p.toolUse!.input,
-                                plan: ((p.toolUse!.input.plan as string) || '') + (delta || part.text || '')
-                              }
-                            }
+                  const det = planXmlDetectionRef.current
+                  const OPEN_TAG = '<proposed_plan>'
+                  const CLOSE_TAG = '</proposed_plan>'
+
+                  if (det.state === 'scanning') {
+                    det.buffer += textDelta
+                    const tagIdx = det.buffer.toLowerCase().indexOf(OPEN_TAG)
+
+                    if (tagIdx !== -1) {
+                      // Found opening tag — split at the tag boundary
+                      const beforeTag = det.buffer.slice(0, tagIdx)
+                      const afterTag = det.buffer.slice(tagIdx + OPEN_TAG.length)
+                      det.buffer = ''
+
+                      if (beforeTag) appendTextDelta(beforeTag)
+
+                      // Check if closing tag is already present
+                      const closeIdx = afterTag.toLowerCase().indexOf(CLOSE_TAG)
+                      let planContent: string
+
+                      if (closeIdx !== -1) {
+                        planContent = afterTag.slice(0, closeIdx).trim()
+                        det.state = 'done'
+                        const afterClose = afterTag.slice(closeIdx + CLOSE_TAG.length)
+                        if (afterClose.trim()) appendTextDelta(afterClose)
+                      } else {
+                        planContent = afterTag
+                        det.state = 'routing'
+                      }
+
+                      const tempId = `codex-plan-streaming-${Date.now()}`
+                      det.cardId = tempId
+                      updateStreamingPartsRef((parts) => [
+                        ...parts,
+                        {
+                          type: 'tool_use' as const,
+                          toolUse: {
+                            id: tempId,
+                            name: 'ExitPlanMode',
+                            input: { plan: planContent },
+                            status: 'running' as const,
+                            startTime: Date.now()
                           }
-                        : p
+                        }
+                      ])
+                      immediateFlush()
+                    } else {
+                      // No opening tag yet — flush text that can't be a partial tag match.
+                      // Any suffix of the buffer that matches a prefix of the open tag
+                      // must be retained (e.g. buffer ends with "<propo").
+                      const maxPartial = Math.min(det.buffer.length, OPEN_TAG.length - 1)
+                      let safePoint = det.buffer.length
+                      for (let len = maxPartial; len >= 1; len--) {
+                        if (OPEN_TAG.startsWith(det.buffer.slice(-len).toLowerCase())) {
+                          safePoint = det.buffer.length - len
+                          break
+                        }
+                      }
+                      if (safePoint > 0) {
+                        appendTextDelta(det.buffer.slice(0, safePoint))
+                        det.buffer = det.buffer.slice(safePoint)
+                      }
+                    }
+                  } else if (det.state === 'routing') {
+                    // Inside <proposed_plan> — append to card, watch for close tag
+                    const toolId = det.cardId!
+                    const currentCard = streamingPartsRef.current.find(
+                      (p) => p.type === 'tool_use' && p.toolUse?.id === toolId
                     )
-                  )
-                  scheduleFlush()
+                    const currentPlan = (currentCard?.toolUse?.input?.plan as string) || ''
+                    const combined = currentPlan + textDelta
+                    const closeIdx = combined.toLowerCase().indexOf(CLOSE_TAG)
+
+                    if (closeIdx !== -1) {
+                      const planContent = combined.slice(0, closeIdx)
+                      const afterClose = combined.slice(closeIdx + CLOSE_TAG.length)
+                      det.state = 'done'
+
+                      updateStreamingPartsRef((parts) =>
+                        parts.map((p) =>
+                          p.type === 'tool_use' && p.toolUse?.id === toolId
+                            ? {
+                                ...p,
+                                toolUse: {
+                                  ...p.toolUse!,
+                                  input: { ...p.toolUse!.input, plan: planContent }
+                                }
+                              }
+                            : p
+                        )
+                      )
+                      scheduleFlush()
+                      if (afterClose.trim()) appendTextDelta(afterClose)
+                    } else {
+                      updateStreamingPartsRef((parts) =>
+                        parts.map((p) =>
+                          p.type === 'tool_use' && p.toolUse?.id === toolId
+                            ? {
+                                ...p,
+                                toolUse: {
+                                  ...p.toolUse!,
+                                  input: { ...p.toolUse!.input, plan: combined }
+                                }
+                              }
+                            : p
+                        )
+                      )
+                      scheduleFlush()
+                    }
+                  } else {
+                    // state === 'done' — after closing tag, route as regular text
+                    if (delta) appendTextDelta(delta)
+                    else if (part.text) setTextContent(part.text)
+                  }
                   setIsStreaming(true)
                 }
               } else {
@@ -1876,7 +1967,7 @@ export function SessionView({ sessionId }: SessionViewProps): React.JSX.Element 
               setIsStreaming(true)
               hasFinalizedCurrentResponseRef.current = false
               newPromptPendingRef.current = false
-              planCardRoutingRef.current = null
+              planXmlDetectionRef.current = { state: 'scanning', buffer: '', cardId: null }
               setIsSending(true)
 
               // Restore worktree status to working/planning

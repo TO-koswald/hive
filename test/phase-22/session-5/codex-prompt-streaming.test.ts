@@ -690,7 +690,7 @@ describe('CodexImplementer.prompt()', () => {
             msg: {
               turn_id: 'turn-1',
               last_agent_message:
-                'Plan\n\n1. Add the function\n2. Add a test\n\nConfirm and I will implement it.'
+                '<proposed_plan>\n1. Add the function\n2. Add a test\n</proposed_plan>'
             }
           }
         },
