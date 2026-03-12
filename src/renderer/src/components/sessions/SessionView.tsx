@@ -2167,17 +2167,7 @@ export function SessionView({ sessionId }: SessionViewProps): React.JSX.Element 
               restoredParts = [...dbParts, ...extraParts]
             }
 
-            const hasActiveStreamingPart = restoredParts.some((part) => {
-              if (part.type === 'tool_use') {
-                return part.toolUse?.status === 'pending' || part.toolUse?.status === 'running'
-              }
-              if (part.type === 'subtask') {
-                return part.subtask?.status === 'running'
-              }
-              return false
-            })
-
-            if (hasActiveStreamingPart) {
+            if (restoredParts.length > 0) {
               streamingPartsRef.current = restoredParts
               setStreamingParts([...streamingPartsRef.current])
 
@@ -2186,6 +2176,18 @@ export function SessionView({ sessionId }: SessionViewProps): React.JSX.Element 
               streamingContentRef.current = content
               setStreamingContent(content)
               setIsStreaming(true)
+              setMessages((currentMessages) => {
+                const currentLast = currentMessages[currentMessages.length - 1]
+                if (
+                  currentLast &&
+                  currentLast.role === 'assistant' &&
+                  currentLast.id === lastMsg.id &&
+                  !currentLast.id.startsWith('local-')
+                ) {
+                  return currentMessages.slice(0, -1)
+                }
+                return currentMessages
+              })
             } else {
               streamingPartsRef.current = []
               streamingContentRef.current = ''

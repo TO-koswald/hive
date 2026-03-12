@@ -11,6 +11,11 @@ vi.mock('../../../src/main/services/logger', () => ({
   })
 }))
 
+const mockGenerateCodexSessionTitle = vi.fn()
+vi.mock('../../../src/main/services/codex-session-title', () => ({
+  generateCodexSessionTitle: (...args: any[]) => mockGenerateCodexSessionTitle(...args)
+}))
+
 // Track event listeners registered on the mock manager
 let eventListeners: Array<(event: any) => void> = []
 
@@ -51,6 +56,7 @@ describe('CodexImplementer.prompt()', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     eventListeners = []
+    mockGenerateCodexSessionTitle.mockResolvedValue(null)
     impl = new CodexImplementer()
     mockManager = impl.getManager()
     mockWindow = {
@@ -67,8 +73,11 @@ describe('CodexImplementer.prompt()', () => {
       worktreePath: '/test/project',
       status: 'ready',
       messages: [],
+      liveAssistantDraft: null,
       revertMessageID: null,
       revertDiff: null,
+      titleGenerated: false,
+      titleGenerationStarted: false,
       ...overrides
     }
     impl.getSessions().set('/test/project::thread-1', session)
@@ -114,6 +123,7 @@ describe('CodexImplementer.prompt()', () => {
       model: expect.any(String),
       interactionMode: 'default'
     })
+    expect(mockGenerateCodexSessionTitle).toHaveBeenCalledWith('Hello Codex', '/test/project')
   })
 
   it('extracts text from parts array', async () => {
@@ -316,6 +326,90 @@ describe('CodexImplementer.prompt()', () => {
     const userMsg = session.messages[0] as any
     expect(userMsg.role).toBe('user')
     expect(userMsg.parts[0].text).toBe('User says hello')
+  })
+
+  it('keeps placeholder title immediately and replaces it with generated title later', async () => {
+    seedSession()
+
+    const mockDb = {
+      updateSession: vi.fn(),
+      getSession: vi
+        .fn()
+        .mockReturnValueOnce({ id: 'hive-session-1', name: 'Fix auth token refresh bug' })
+        .mockReturnValueOnce({ id: 'hive-session-1', name: 'Auth refresh fix' }),
+      getWorktreeBySessionId: vi.fn().mockReturnValue(null)
+    }
+    impl.setDatabaseService(mockDb as any)
+
+    mockGenerateCodexSessionTitle.mockResolvedValue('Auth refresh fix')
+
+    simulateManagerEvents([
+      {
+        id: 'e1',
+        kind: 'notification',
+        provider: 'codex',
+        threadId: 'thread-1',
+        createdAt: new Date().toISOString(),
+        method: 'turn/completed',
+        payload: { turn: { status: 'completed' } }
+      }
+    ])
+
+    await impl.prompt('/test/project', 'thread-1', 'Fix auth token refresh bug')
+    await new Promise((resolve) => setTimeout(resolve, 0))
+
+    expect(mockDb.updateSession).toHaveBeenNthCalledWith(1, 'hive-session-1', {
+      name: 'Fix auth token refresh bug'
+    })
+    expect(mockDb.updateSession).toHaveBeenNthCalledWith(2, 'hive-session-1', {
+      name: 'Auth refresh fix'
+    })
+
+    const streamCalls = mockWindow.webContents.send.mock.calls
+      .filter((c: any[]) => c[0] === 'opencode:stream')
+      .map((c: any[]) => c[1])
+      .filter((e: any) => e.type === 'session.updated')
+
+    expect(streamCalls).toEqual([
+      {
+        type: 'session.updated',
+        sessionId: 'hive-session-1',
+        data: {
+          title: 'Fix auth token refresh bug',
+          info: { title: 'Fix auth token refresh bug' }
+        }
+      },
+      {
+        type: 'session.updated',
+        sessionId: 'hive-session-1',
+        data: {
+          title: 'Auth refresh fix',
+          info: { title: 'Auth refresh fix' }
+        }
+      }
+    ])
+  })
+
+  it('starts title generation only once per session', async () => {
+    const session = seedSession()
+
+    simulateManagerEvents([
+      {
+        id: 'e1',
+        kind: 'notification',
+        provider: 'codex',
+        threadId: 'thread-1',
+        createdAt: new Date().toISOString(),
+        method: 'turn/completed',
+        payload: { turn: { status: 'completed' } }
+      }
+    ])
+
+    await impl.prompt('/test/project', 'thread-1', 'First message')
+    session.status = 'ready'
+    await impl.prompt('/test/project', 'thread-1', 'Second message')
+
+    expect(mockGenerateCodexSessionTitle).toHaveBeenCalledTimes(1)
   })
 
   // ── Error handling ──────────────────────────────────────────
@@ -792,6 +886,156 @@ describe('CodexImplementer.prompt()', () => {
       messages.push({ role: 'fake' })
 
       expect(session.messages).toHaveLength(1)
+    })
+
+    it('returns a live in-progress assistant draft with text and tool parts while running', async () => {
+      seedSession()
+
+      let completeTurn: (() => void) | null = null
+      mockManager.sendTurn.mockImplementation(async () => {
+        setTimeout(() => {
+          for (const listener of [...eventListeners]) {
+            listener({
+              id: 'e-text',
+              kind: 'notification',
+              provider: 'codex',
+              threadId: 'thread-1',
+              createdAt: new Date().toISOString(),
+              method: 'item/agentMessage/delta',
+              textDelta: 'Thinking through it',
+              payload: { delta: 'Thinking through it' }
+            })
+            listener({
+              id: 'e-tool-start',
+              kind: 'notification',
+              provider: 'codex',
+              threadId: 'thread-1',
+              createdAt: new Date().toISOString(),
+              method: 'item.started',
+              payload: {
+                item: {
+                  type: 'commandExecution',
+                  id: 'tool-1',
+                  toolName: 'bash',
+                  input: { command: 'ls' }
+                }
+              }
+            })
+            listener({
+              id: 'e-tool-done',
+              kind: 'notification',
+              provider: 'codex',
+              threadId: 'thread-1',
+              createdAt: new Date().toISOString(),
+              method: 'item.completed',
+              payload: {
+                item: {
+                  type: 'commandExecution',
+                  id: 'tool-1',
+                  toolName: 'bash',
+                  status: 'completed',
+                  output: 'file-a'
+                }
+              }
+            })
+          }
+        }, 0)
+
+        await new Promise<void>((resolve) => {
+          completeTurn = resolve
+        })
+        return { turnId: 'turn-1', threadId: 'thread-1' }
+      })
+
+      const promptPromise = impl.prompt('/test/project', 'thread-1', 'Inspect repo')
+      await new Promise((resolve) => setTimeout(resolve, 10))
+
+      const messages = await impl.getMessages('/test/project', 'thread-1')
+      expect(messages).toHaveLength(2)
+      expect((messages[0] as any).role).toBe('user')
+      expect((messages[1] as any).role).toBe('assistant')
+      expect((messages[1] as any).id).toBe('codex-live-thread-1')
+      expect((messages[1] as any).parts[0]).toMatchObject({
+        type: 'text',
+        text: 'Thinking through it'
+      })
+      expect((messages[1] as any).parts[1]).toMatchObject({
+        type: 'tool',
+        callID: 'tool-1',
+        tool: 'bash',
+        state: {
+          status: 'completed',
+          input: { command: 'ls' },
+          output: 'file-a'
+        }
+      })
+
+      for (const listener of [...eventListeners]) {
+        listener({
+          id: 'e-done',
+          kind: 'notification',
+          provider: 'codex',
+          threadId: 'thread-1',
+          createdAt: new Date().toISOString(),
+          method: 'turn/completed',
+          payload: { turn: { status: 'completed' } }
+        })
+      }
+      completeTurn?.()
+      await promptPromise
+    })
+
+    it('returns a live text-only assistant draft while running', async () => {
+      seedSession()
+
+      let completeTurn: (() => void) | null = null
+      mockManager.sendTurn.mockImplementation(async () => {
+        setTimeout(() => {
+          for (const listener of [...eventListeners]) {
+            listener({
+              id: 'e-text',
+              kind: 'notification',
+              provider: 'codex',
+              threadId: 'thread-1',
+              createdAt: new Date().toISOString(),
+              method: 'item/agentMessage/delta',
+              textDelta: 'Partial answer',
+              payload: { delta: 'Partial answer' }
+            })
+          }
+        }, 0)
+
+        await new Promise<void>((resolve) => {
+          completeTurn = resolve
+        })
+        return { turnId: 'turn-1', threadId: 'thread-1' }
+      })
+
+      const promptPromise = impl.prompt('/test/project', 'thread-1', 'Say hi')
+      await new Promise((resolve) => setTimeout(resolve, 10))
+
+      const messages = await impl.getMessages('/test/project', 'thread-1')
+      expect(messages).toHaveLength(2)
+      expect((messages[1] as any).parts).toEqual([
+        expect.objectContaining({
+          type: 'text',
+          text: 'Partial answer'
+        })
+      ])
+
+      for (const listener of [...eventListeners]) {
+        listener({
+          id: 'e-done',
+          kind: 'notification',
+          provider: 'codex',
+          threadId: 'thread-1',
+          createdAt: new Date().toISOString(),
+          method: 'turn/completed',
+          payload: { turn: { status: 'completed' } }
+        })
+      }
+      completeTurn?.()
+      await promptPromise
     })
   })
 })

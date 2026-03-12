@@ -8,6 +8,7 @@ import {
 } from '../../src/renderer/src/components/sessions/SessionView'
 import { useSessionStore } from '../../src/renderer/src/stores/useSessionStore'
 import { lastSendMode } from '../../src/renderer/src/lib/message-send-times'
+import { useWorktreeStatusStore } from '../../src/renderer/src/stores/useWorktreeStatusStore'
 
 // Mock clipboard API
 const mockWriteText = vi.fn().mockResolvedValue(undefined)
@@ -164,6 +165,7 @@ beforeEach(() => {
     inlineConnectionSessionId: null,
     closedTerminalSessionIds: new Set()
   })
+  useWorktreeStatusStore.setState({ sessionStatuses: {}, lastMessageTimeByWorktree: {} })
 
   // Mock window.db
   Object.defineProperty(window, 'db', {
@@ -1249,6 +1251,200 @@ describe('Session 8: Session View', () => {
       })
 
       expect(window.opencodeOps.getMessages).toHaveBeenCalledTimes(1)
+    })
+
+    test('Busy remount restores a text-only streaming draft without double-rendering the last assistant message', async () => {
+      useWorktreeStatusStore.getState().setSessionStatus('test-session-1', 'working')
+
+      ;(window.db.session.get as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+        id: 'test-session-1',
+        worktree_id: 'wt-1',
+        project_id: 'proj-1',
+        name: 'Test Session',
+        status: 'active',
+        opencode_session_id: 'opc-session-1',
+        mode: 'build',
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+        completed_at: null
+      })
+      ;(window.db.worktree.get as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+        id: 'wt-1',
+        project_id: 'proj-1',
+        name: 'WT',
+        branch_name: 'main',
+        path: '/tmp/worktree-live-text',
+        status: 'active',
+        is_default: true,
+        created_at: new Date().toISOString(),
+        last_accessed_at: new Date().toISOString()
+      })
+      ;(window.opencodeOps.reconnect as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+        success: true,
+        sessionStatus: 'busy'
+      })
+      ;(window.opencodeOps.getMessages as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+        success: true,
+        messages: [
+          {
+            info: {
+              id: 'opc-user-live-1',
+              role: 'user',
+              time: { created: Date.now() - 1000 }
+            },
+            parts: [{ type: 'text', text: 'Question' }]
+          },
+          {
+            info: {
+              id: 'opc-live-1',
+              role: 'assistant',
+              time: { created: Date.now() }
+            },
+            parts: [{ type: 'text', text: 'Partial Codex answer' }]
+          }
+        ]
+      })
+
+      render(<SessionView sessionId="test-session-1" />)
+
+      await waitFor(() => {
+        expect(screen.getByText('Partial Codex answer')).toBeInTheDocument()
+      })
+
+      expect(screen.getAllByTestId('message-assistant')).toHaveLength(1)
+      expect(screen.queryByTestId('typing-indicator')).toBeInTheDocument()
+    })
+
+    test('Busy remount restores tool parts and clears the overlay after idle refresh without duplicating the final assistant message', async () => {
+      let streamCallback: ((event: Record<string, unknown>) => void) | null = null
+      useWorktreeStatusStore.getState().setSessionStatus('test-session-1', 'working')
+
+      ;(window.db.session.get as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+        id: 'test-session-1',
+        worktree_id: 'wt-1',
+        project_id: 'proj-1',
+        name: 'Test Session',
+        status: 'active',
+        opencode_session_id: 'opc-session-1',
+        mode: 'build',
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+        completed_at: null
+      })
+      ;(window.db.worktree.get as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+        id: 'wt-1',
+        project_id: 'proj-1',
+        name: 'WT',
+        branch_name: 'main',
+        path: '/tmp/worktree-live-tool',
+        status: 'active',
+        is_default: true,
+        created_at: new Date().toISOString(),
+        last_accessed_at: new Date().toISOString()
+      })
+      ;(window.opencodeOps.reconnect as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+        success: true,
+        sessionStatus: 'busy'
+      })
+      ;(window.opencodeOps.getMessages as ReturnType<typeof vi.fn>)
+        .mockResolvedValueOnce({
+          success: true,
+          messages: [
+            {
+              info: {
+                id: 'opc-user-tool-1',
+                role: 'user',
+                time: { created: Date.now() - 1000 }
+              },
+              parts: [{ type: 'text', text: 'Run a command' }]
+            },
+            {
+              info: {
+                id: 'opc-live-tool-1',
+                role: 'assistant',
+                time: { created: Date.now() }
+              },
+              parts: [
+                { type: 'text', text: 'Running now' },
+                {
+                  type: 'tool',
+                  callID: 'tool-live-1',
+                  tool: 'bash',
+                  state: {
+                    status: 'completed',
+                    input: { command: 'ls' },
+                    output: 'file-a\nfile-b'
+                  }
+                }
+              ]
+            }
+          ]
+        })
+        .mockResolvedValueOnce({
+          success: true,
+          messages: [
+            {
+              info: {
+                id: 'opc-user-tool-1',
+                role: 'user',
+                time: { created: Date.now() - 1000 }
+              },
+              parts: [{ type: 'text', text: 'Run a command' }]
+            },
+            {
+              info: {
+                id: 'opc-final-tool-1',
+                role: 'assistant',
+                time: { created: Date.now() }
+              },
+              parts: [
+                { type: 'text', text: 'Running now' },
+                {
+                  type: 'tool',
+                  callID: 'tool-live-1',
+                  tool: 'bash',
+                  state: {
+                    status: 'completed',
+                    input: { command: 'ls' },
+                    output: 'file-a\nfile-b'
+                  }
+                }
+              ]
+            }
+          ]
+        })
+      ;(window.opencodeOps.onStream as ReturnType<typeof vi.fn>).mockImplementation((callback) => {
+        streamCallback = callback as (event: Record<string, unknown>) => void
+        return () => {}
+      })
+
+      render(<SessionView sessionId="test-session-1" />)
+
+      await waitFor(() => {
+        expect(screen.getByText('Running now')).toBeInTheDocument()
+      })
+
+      expect(screen.getAllByTestId('message-assistant')).toHaveLength(1)
+      expect(screen.getByText('bash')).toBeInTheDocument()
+
+      act(() => {
+        streamCallback?.({
+          sessionId: 'test-session-1',
+          type: 'session.status',
+          statusPayload: { type: 'idle' },
+          data: { status: { type: 'idle' } }
+        })
+      })
+
+      await waitFor(() => {
+        expect((window.opencodeOps.getMessages as ReturnType<typeof vi.fn>).mock.calls.length).toBe(
+          2
+        )
+      })
+
+      await waitFor(() => {
+        expect(screen.getAllByTestId('message-assistant')).toHaveLength(1)
+      })
     })
 
     test('Canonical refresh replaces in-memory messages instead of merging by id', async () => {

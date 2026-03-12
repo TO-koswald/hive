@@ -286,8 +286,10 @@ describe('Codex Abort & getMessages', () => {
         worktreePath: '/test',
         status: 'running' as const,
         messages: [],
+        liveAssistantDraft: null,
         revertMessageID: null,
-        revertDiff: null
+        revertDiff: null,
+        titleGenerated: false
       }
       impl.getSessions().set('/test::thread-abort-1', session)
 
@@ -316,8 +318,10 @@ describe('Codex Abort & getMessages', () => {
         worktreePath: '/test',
         status: 'running',
         messages: [],
+        liveAssistantDraft: null,
         revertMessageID: null,
-        revertDiff: null
+        revertDiff: null,
+        titleGenerated: false
       })
 
       internalManager.interruptTurn = vi.fn().mockResolvedValue(undefined)
@@ -358,8 +362,10 @@ describe('Codex Abort & getMessages', () => {
         worktreePath: '/test',
         status: 'running',
         messages: [],
+        liveAssistantDraft: null,
         revertMessageID: null,
-        revertDiff: null
+        revertDiff: null,
+        titleGenerated: false
       })
 
       internalManager.interruptTurn = vi.fn().mockRejectedValue(new Error('Server not responding'))
@@ -385,8 +391,10 @@ describe('Codex Abort & getMessages', () => {
           { role: 'user', parts: [{ type: 'text', text: 'hi' }] },
           { role: 'assistant', parts: [{ type: 'text', text: 'hello' }] }
         ],
+        liveAssistantDraft: null,
         revertMessageID: null,
-        revertDiff: null
+        revertDiff: null,
+        titleGenerated: false
       }
       impl.getSessions().set('/test::thread-msg-1', session)
 
@@ -407,8 +415,10 @@ describe('Codex Abort & getMessages', () => {
         worktreePath: '/test',
         status: 'ready',
         messages: [],
+        liveAssistantDraft: null,
         revertMessageID: null,
-        revertDiff: null
+        revertDiff: null,
+        titleGenerated: false
       })
 
       // Mock readThread to return a thread snapshot
@@ -448,8 +458,10 @@ describe('Codex Abort & getMessages', () => {
         worktreePath: '/test',
         status: 'ready' as const,
         messages: [] as unknown[],
+        liveAssistantDraft: null,
         revertMessageID: null,
-        revertDiff: null
+        revertDiff: null,
+        titleGenerated: false
       }
       impl.getSessions().set('/test::thread-msg-1', session)
 
@@ -485,8 +497,10 @@ describe('Codex Abort & getMessages', () => {
         worktreePath: '/test',
         status: 'closed',
         messages: [],
+        liveAssistantDraft: null,
         revertMessageID: null,
-        revertDiff: null
+        revertDiff: null,
+        titleGenerated: false
       })
 
       internalManager.readThread = vi.fn()
@@ -577,8 +591,10 @@ describe('Codex Abort & getMessages', () => {
         worktreePath: '/test',
         status: 'ready',
         messages: [],
+        liveAssistantDraft: null,
         revertMessageID: null,
-        revertDiff: null
+        revertDiff: null,
+        titleGenerated: false
       })
 
       internalManager.readThread = vi.fn().mockRejectedValue(new Error('Server unavailable'))
@@ -598,8 +614,10 @@ describe('Codex Abort & getMessages', () => {
         worktreePath: '/test',
         status: 'ready',
         messages: [],
+        liveAssistantDraft: null,
         revertMessageID: null,
-        revertDiff: null
+        revertDiff: null,
+        titleGenerated: false
       })
 
       internalManager.readThread = vi.fn().mockResolvedValue({
@@ -635,8 +653,10 @@ describe('Codex Abort & getMessages', () => {
         worktreePath: '/test',
         status: 'ready',
         messages: [],
+        liveAssistantDraft: null,
         revertMessageID: null,
-        revertDiff: null
+        revertDiff: null,
+        titleGenerated: false
       })
 
       internalManager.readThread = vi.fn().mockResolvedValue({
@@ -682,8 +702,10 @@ describe('Codex Abort & getMessages', () => {
         worktreePath: '/test',
         status: 'ready',
         messages: [],
+        liveAssistantDraft: null,
         revertMessageID: null,
-        revertDiff: null
+        revertDiff: null,
+        titleGenerated: false
       })
 
       internalManager.readThread = vi.fn().mockResolvedValue({
