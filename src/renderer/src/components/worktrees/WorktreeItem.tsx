@@ -137,9 +137,10 @@ export function WorktreeItem({
   const isSource = connectionModeSourceId === worktree.id
   const isChecked = connectionModeSelectedIds.has(worktree.id)
 
-  const worktreeLabel = worktree.is_default
-    ? displayName
-    : `${displayName} - ${worktree.branch_name}`
+  const worktreeLabel =
+    worktree.is_default || displayName === worktree.branch_name
+      ? displayName
+      : `${displayName} - ${worktree.branch_name}`
 
   const renderWorktreeName = (): React.JSX.Element => (
     <TooltipProvider delayDuration={200}>
