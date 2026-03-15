@@ -6,7 +6,7 @@ import { useConnectionStore } from '@/stores/useConnectionStore'
 import { useQuestionStore } from '@/stores/useQuestionStore'
 import { usePermissionStore } from '@/stores/usePermissionStore'
 import { useSettingsStore } from '@/stores/useSettingsStore'
-import { useContextStore } from '@/stores/useContextStore'
+import { useContextStore, type TokenInfo, type SessionModelRef } from '@/stores/useContextStore'
 import { useRecentStore } from '@/stores/useRecentStore'
 import { useUsageStore, resolveUsageProvider } from '@/stores'
 import { extractTokens, extractCost, extractModelRef, extractModelUsage } from '@/lib/token-utils'
@@ -199,6 +199,29 @@ export function useOpenCodeGlobalListener(): void {
                 }
               }
             }
+            return
+          }
+
+          // Handle context usage from Codex sessions
+          if (event.type === 'session.context_usage') {
+            const { tokens, model, contextWindow } = event.data as {
+              tokens: TokenInfo
+              model: SessionModelRef
+              contextWindow: number
+            }
+            useContextStore.getState().setSessionTokens(sessionId, tokens, model)
+            if (contextWindow > 0 && model) {
+              useContextStore.getState().setModelLimit(
+                model.modelID, contextWindow, model.providerID
+              )
+              useContextStore.getState().setModelLimit(model.modelID, contextWindow)
+            }
+            return
+          }
+
+          // Handle context compaction from Codex sessions
+          if (event.type === 'session.context_compacted') {
+            useContextStore.getState().clearSessionTokenSnapshot(sessionId)
             return
           }
 

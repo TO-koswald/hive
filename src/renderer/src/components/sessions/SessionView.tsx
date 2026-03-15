@@ -2384,6 +2384,21 @@ export function SessionView({ sessionId }: SessionViewProps): React.JSX.Element 
           }
         }
 
+        // For Codex sessions, pre-seed known model limits so the context bar
+        // renders immediately before the first thread/tokenUsage/updated event.
+        if (sessionRecord?.agent_sdk === 'codex') {
+          const codexModels = [
+            { id: 'gpt-5.4', context: 258400 },
+            { id: 'gpt-5.3-codex', context: 258400 },
+            { id: 'gpt-5.3-codex-spark', context: 258400 },
+            { id: 'gpt-5.2-codex', context: 258400 }
+          ]
+          for (const m of codexModels) {
+            useContextStore.getState().setModelLimit(m.id, m.context, 'codex')
+            useContextStore.getState().setModelLimit(m.id, m.context)
+          }
+        }
+
         // Fetch context limits for all provider/model combinations (fire-and-forget).
         // This avoids model-id collisions across providers and lets context usage use
         // the exact model that produced the latest assistant message.
