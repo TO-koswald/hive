@@ -21,7 +21,7 @@ import { RecentList } from './RecentList'
 export function LeftSidebar(): React.JSX.Element {
   const { leftSidebarWidth, leftSidebarCollapsed, setLeftSidebarWidth } = useLayoutStore()
   const expandAllProjects = useProjectStore((s) => s.expandAllProjects)
-  const projects = useProjectStore((s) => s.projects)
+  const projectCount = useProjectStore((s) => s.projects.length)
   const showUsageIndicator = useSettingsStore((s) => s.showUsageIndicator)
   const [filterQuery, setFilterQuery] = useState('')
 
@@ -147,7 +147,7 @@ export function LeftSidebar(): React.JSX.Element {
             </div>
           </div>
         )}
-        {!connectionModeActive && projects.length > 1 && (
+        {!connectionModeActive && projectCount > 1 && (
           <div className="px-3 py-2 border-b">
             <ProjectFilter value={filterQuery} onChange={setFilterQuery} />
           </div>
