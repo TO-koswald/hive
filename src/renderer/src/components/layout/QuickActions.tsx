@@ -1,9 +1,10 @@
 import { Copy, Check, FolderOpen, GitBranch, Terminal, Code } from 'lucide-react'
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import { Button } from '@/components/ui/button'
 import { useWorktreeStore } from '@/stores/useWorktreeStore'
 import { useConnectionStore } from '@/stores/useConnectionStore'
 import { useSettingsStore, type EditorOption, type TerminalOption } from '@/stores/useSettingsStore'
+import { useProjectStore } from '@/stores/useProjectStore'
 
 function CursorIcon({ className }: { className?: string }): React.JSX.Element {
   return (
@@ -40,6 +41,77 @@ function WarpIcon({ className }: { className?: string }): React.JSX.Element {
   return (
     <svg viewBox="0 0 24 24" className={className} fill="currentColor">
       <path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.568 8.16a.554.554 0 0 1-.554.553h-5.46l-2.14 6.574a.554.554 0 0 1-1.054-.343l2.278-6.998a.554.554 0 0 1 .527-.382h5.849c.306 0 .554.29.554.596zm-4.283 7.68a.554.554 0 0 1-.527.382H6.91a.554.554 0 0 1 0-1.107h5.46l2.14-6.574a.554.554 0 0 1 1.054.343l-2.278 6.998z" />
+    </svg>
+  )
+}
+
+function XcodeIcon({ className }: { className?: string }): React.JSX.Element {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" className={className}>
+      <linearGradient id="xcode-a" gradientUnits="userSpaceOnUse" x1="63.947" y1="114.165" x2="63.947" y2="13.784">
+        <stop offset="0" stopColor="#1578e4" />
+        <stop offset="1" stopColor="#00c3f2" />
+      </linearGradient>
+      <path d="M35.7 13.8h56.5c12.1 0 21.9 9.8 21.9 21.9v56.5c0 12.1-9.8 21.9-21.9 21.9H35.7c-12.1 0-21.9-9.8-21.9-21.9V35.7c0-12.1 9.8-21.9 21.9-21.9z" fill="url(#xcode-a)" />
+      <path fill="#FFF" d="M90.5 19.2H37.4c-10.1 0-18.3 8.2-18.3 18.3v53.1c0 10.1 8.2 18.3 18.3 18.3h53.1c10.1 0 18.3-8.2 18.3-18.3V37.4c0-10.1-8.2-18.2-18.3-18.2zm16.8 71.6c0 9.2-7.4 16.6-16.6 16.6H37.2c-9.1 0-16.6-7.4-16.6-16.6V37.2c0-9.2 7.4-16.6 16.6-16.6h53.6c9.1 0 16.6 7.4 16.6 16.6v53.6z" />
+      <path d="M64.1 22.8c-22.6 0-41 18.4-41 41s18.4 41 41 41c22.7 0 41-18.4 41-41s-18.4-41-41-41zm0 81.4c-22.3 0-40.4-18.1-40.4-40.4s18.1-40.4 40.4-40.4c22.3 0 40.4 18.1 40.4 40.4s-18.1 40.4-40.4 40.4z" fill="#69c5f3" />
+      <path d="M64.1 31.2c-18.1 0-32.7 14.6-32.7 32.7S46 96.5 64.1 96.5s32.7-14.6 32.7-32.7-14.7-32.6-32.7-32.6zm0 64.6c-17.7 0-32-14.3-32-32s14.3-32 32-32 32 14.3 32 32-14.4 32-32 32z" fill="#68c5f4" />
+      <path fill="#FFF" d="M32.8 71.3h62.4c2.6 0 4.6 2.1 4.6 4.6 0 2.6-2.1 4.6-4.6 4.6H32.8c-2.6 0-4.6-2.1-4.6-4.6-.1-2.5 2-4.6 4.6-4.6z" />
+      <path d="M32.6 72.2h62.6c2 0 3.7 1.6 3.7 3.7v.1c0 2-1.6 3.7-3.7 3.7H32.6c-2 0-3.7-1.6-3.7-3.7v-.2c.1-2 1.7-3.6 3.7-3.6z" fill="#0a93e9" />
+      <path fill="#FFF" d="M62 34.1l31.2 54c1.3 2.2.5 5-1.7 6.3-2.2 1.3-5 .5-6.3-1.7L54 38.7c-1.3-2.2-.5-5 1.7-6.3 2.2-1.3 5-.5 6.3 1.7z" />
+      <linearGradient id="xcode-b" gradientUnits="userSpaceOnUse" x1="73.58" y1="94.25" x2="73.58" y2="32.642">
+        <stop offset="0" stopColor="#1285e7" />
+        <stop offset="1" stopColor="#00b5ef" />
+      </linearGradient>
+      <path d="M61.2 34.5l31.3 54.2c1 1.7.4 4-1.3 5l-.2.1c-1.7 1-4 .4-5-1.3L54.7 38.2c-1-1.7-.4-4 1.3-5l.1-.1c1.8-1 4.1-.4 5.1 1.4z" fill="url(#xcode-b)" />
+      <path fill="#FFF" d="M55.5 71.3c8.7-15 18.7-32.4 18.7-32.4 1.3-2.2.5-5-1.7-6.3-2.2-1.3-5-.5-6.3 1.7 0 0-12.2 21.2-21.4 37h10.7zm-5.4 9.2C45.9 87.7 43 92.9 43 92.9c-1.3 2.2-4.1 3-6.3 1.7s-3-4.1-1.7-6.3c0 0 1.7-3.1 4.4-7.7 3.4-.1 9.6-.1 10.7-.1z" />
+      <linearGradient id="xcode-c" gradientUnits="userSpaceOnUse" x1="54.566" y1="94.401" x2="54.566" y2="32.794">
+        <stop offset="0" stopColor="#1285e7" />
+        <stop offset="1" stopColor="#00b5ef" />
+      </linearGradient>
+      <path d="M54.4 71.3c8.8-15.2 19-32.9 19-32.9 1-1.7.4-4-1.3-5l-.1-.1c-1.7-1-4-.4-5 1.3 0 0-12 20.8-21.2 36.7h8.6zm-5.3 9.2c-4 7-6.9 12-6.9 12-1 1.7-3.2 2.3-5 1.3H37c-1.7-1-2.3-3.2-1.3-5 0 0 1.9-3.3 4.8-8.3h8.6z" fill="url(#xcode-c)" />
+      <linearGradient id="xcode-d" gradientUnits="userSpaceOnUse" x1="84.758" y1="39.174" x2="94.522" y2="44.149">
+        <stop offset="0" stopColor="#344351" />
+        <stop offset=".1" stopColor="#9697a0" />
+        <stop offset=".47" stopColor="#71747d" />
+        <stop offset=".8" stopColor="#8e8f94" />
+        <stop offset=".9" stopColor="#606e84" />
+      </linearGradient>
+      <path d="M90.6 25.1s10.3 2.5 11.1 3.2-1.3 4.7-1.7 5.3c-3.3 4-13.6 26.1-13.6 26.1l-9.5-5.4s8.5-15.8 11.5-21.4c1.9-3.8 2.2-7.8 2.2-7.8z" fill="url(#xcode-d)" />
+      <linearGradient id="xcode-e" gradientUnits="userSpaceOnUse" x1="58.131" y1="81.721" x2="73.237" y2="89.154">
+        <stop offset=".115" stopColor="#2c3952" />
+        <stop offset=".55" stopColor="#474a54" />
+        <stop offset="1" stopColor="#143052" />
+      </linearGradient>
+      <path d="M86.4 61c.4-.8.9-2-.2-2.9-1.2-.9-6.8-3.9-7.8-4.1-1-.2-1.8 0-2.2.7-.4.7-31.1 53.3-31.7 54.8-.6 1.5-.7 2.6.2 2.9.9.3 11.2 5.2 12.2 6.3 1 1.1 1.5-.1 1.9-.7 1.9-2.4 27.1-56.2 27.6-57z" fill="url(#xcode-e)" />
+      <radialGradient id="xcode-f" cx="51.211" cy="114.953" r="7.901" fx="51.196" fy="117.292" gradientTransform="matrix(.8979 .4402 -.2506 .5111 34.032 33.662)" gradientUnits="userSpaceOnUse">
+        <stop offset=".417" stopColor="#0c0c12" />
+        <stop offset="1" stopColor="#3d4651" />
+      </radialGradient>
+      <path d="M44.5 110.2c-.3.6-.8 1.3-.7 2.4.1 4.1 6.8 7.9 10.7 7.9 2.7 0 3.6-1.1 4.6-3.1s-13.5-9.6-14.6-7.2z" fill="url(#xcode-f)" />
+      <linearGradient id="xcode-g" gradientUnits="userSpaceOnUse" x1="117.884" y1="29.257" x2="106.863" y2="14.364">
+        <stop offset=".27" stopColor="#262b33" />
+        <stop offset=".45" stopColor="#74747e" />
+        <stop offset=".54" stopColor="#b0b0bc" />
+        <stop offset=".73" stopColor="#74747e" />
+      </linearGradient>
+      <path d="M114.4 19.9c1.8 1.3 4.2 1 6.1.7 1.3-.2-.7 1.7-2.9 6.1s-2.1 4.7-2.4 4.4c-.3-.3-10.2-5.9-9.9-6.4.4-.5 2-11.4 2.8-11.1 2.9.7 3.4 4.2 6.3 6.3z" fill="url(#xcode-g)" />
+      <linearGradient id="xcode-h" gradientUnits="userSpaceOnUse" x1="98.542" y1="30.424" x2="114.815" y2="28.322">
+        <stop offset=".14" stopColor="#606e84" />
+        <stop offset=".4" stopColor="#9899a5" />
+        <stop offset=".73" stopColor="#475768" />
+        <stop offset=".92" stopColor="#262b33" />
+      </linearGradient>
+      <path d="M99 32.2c.7-1.1 3.9-7.9 9-7.9 2.3 0 6.7 5.8 7.1 6.6.3.7-.7 3.5-1.2 2.2-.6-1.5-3.1-4.7-5.8-4.7s-6.4 3.1-7.3 4.2c-.9 1-2.5.7-1.8-.4z" fill="url(#xcode-h)" />
+      <linearGradient id="xcode-i" gradientUnits="userSpaceOnUse" x1="116.332" y1="34.756" x2="123.707" y2="21.982">
+        <stop offset="0" stopColor="#858997" />
+        <stop offset=".23" stopColor="#244668" />
+        <stop offset=".4" stopColor="#040506" />
+        <stop offset=".546" stopColor="#65656e" />
+        <stop offset=".64" stopColor="#92929e" />
+      </linearGradient>
+      <path d="M120.7 20.6l5.5 2.8s-2.1 2.8-3.8 6c-1.8 3.4-3 7.1-3 7.1l-5.3-3.2s1.3-3.6 3.2-7.1c1.5-2.9 3.4-5.6 3.4-5.6z" fill="url(#xcode-i)" />
+      <path d="M126.2 23.4c.4.2-.9 3.3-2.8 6.9-1.9 3.6-3.7 6.4-4 6.2-.4-.2.9-3.3 2.8-6.9 1.8-3.6 3.6-6.4 4-6.2z" fill="#bfc0d0" />
     </svg>
   )
 }
@@ -113,6 +185,28 @@ export function QuickActions(): React.JSX.Element | null {
       : null
   const disabled = !activePath
 
+  const selectedProject = useProjectStore((s) =>
+    s.selectedProjectId ? s.projects.find((p) => p.id === s.selectedProjectId) : null
+  )
+  const isSwiftProject = selectedProject?.language === 'swift'
+  const [xcworkspacePath, setXcworkspacePath] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!isSwiftProject || isConnectionMode) {
+      setXcworkspacePath(null)
+      return
+    }
+    const searchPath = activePath || selectedProject?.path
+    if (!searchPath) {
+      setXcworkspacePath(null)
+      return
+    }
+    window.projectOps
+      .findXcworkspace(searchPath)
+      .then(setXcworkspacePath)
+      .catch(() => setXcworkspacePath(null))
+  }, [isSwiftProject, activePath, selectedProject?.path, isConnectionMode])
+
   const editorLabel = EDITOR_LABELS[defaultEditor]
   const terminalLabel = TERMINAL_LABELS[defaultTerminal]
 
@@ -164,6 +258,20 @@ export function QuickActions(): React.JSX.Element | null {
 
   return (
     <div className="flex items-center gap-3" data-testid="quick-actions">
+      {isSwiftProject && xcworkspacePath && !isConnectionMode && (
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-7 px-2 gap-1.5 text-xs cursor-pointer"
+          disabled={disabled}
+          onClick={() => window.projectOps.openPath(xcworkspacePath)}
+          title="Open in Xcode"
+          data-testid="quick-action-xcode"
+        >
+          <XcodeIcon className="h-3.5 w-3.5" />
+          <span>Xcode</span>
+        </Button>
+      )}
       <Button
         variant="ghost"
         size="sm"

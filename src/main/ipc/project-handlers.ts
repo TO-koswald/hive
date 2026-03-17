@@ -174,4 +174,27 @@ export function registerProjectHandlers(): void {
   ipcMain.handle('project:getIconPath', (_event, filename: string): string | null => {
     return getIconDataUrl(filename)
   })
+
+  // Find .xcworkspace file for Swift projects (checks root + Example/ subdirectory)
+  ipcMain.handle(
+    'project:findXcworkspace',
+    (_event, projectPath: string): string | null => {
+      try {
+        const rootFiles = readdirSync(projectPath)
+        const rootMatch = rootFiles.find((f) => f.endsWith('.xcworkspace'))
+        if (rootMatch) return join(projectPath, rootMatch)
+
+        const exampleDir = join(projectPath, 'Example')
+        if (existsSync(exampleDir)) {
+          const exampleFiles = readdirSync(exampleDir)
+          const exampleMatch = exampleFiles.find((f) => f.endsWith('.xcworkspace'))
+          if (exampleMatch) return join(exampleDir, exampleMatch)
+        }
+
+        return null
+      } catch {
+        return null
+      }
+    }
+  )
 }

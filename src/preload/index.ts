@@ -195,6 +195,10 @@ const projectOps = {
   detectLanguage: (projectPath: string): Promise<string | null> =>
     ipcRenderer.invoke('project:detectLanguage', projectPath),
 
+  // Find .xcworkspace file for Swift projects
+  findXcworkspace: (projectPath: string): Promise<string | null> =>
+    ipcRenderer.invoke('project:findXcworkspace', projectPath),
+
   // Load custom language icons as data URLs
   loadLanguageIcons: (): Promise<Record<string, string>> =>
     ipcRenderer.invoke('project:loadLanguageIcons'),

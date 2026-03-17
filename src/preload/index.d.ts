@@ -348,6 +348,7 @@ declare global {
       copyToClipboard: (text: string) => Promise<void>
       readFromClipboard: () => Promise<string>
       detectLanguage: (projectPath: string) => Promise<string | null>
+      findXcworkspace: (projectPath: string) => Promise<string | null>
       loadLanguageIcons: () => Promise<Record<string, string>>
       initRepository: (path: string) => Promise<{ success: boolean; error?: string }>
       pickProjectIcon: (projectId: string) => Promise<{
