@@ -289,7 +289,16 @@ function registerSystemHandlers(): void {
           spawn('open', ['-a', 'Ghostty', path], { detached: true, stdio: 'ignore' })
           break
         case 'android-studio':
-          spawn('open', ['-a', 'Android Studio', path], { detached: true, stdio: 'ignore' })
+          if (process.platform === 'darwin') {
+            spawn('open', ['-a', 'Android Studio', path], { detached: true, stdio: 'ignore' })
+          } else if (process.platform === 'win32') {
+            spawn('cmd', ['/c', 'start', '', 'studio64.exe', path], {
+              detached: true,
+              stdio: 'ignore'
+            })
+          } else {
+            spawn('studio', [path], { detached: true, stdio: 'ignore' })
+          }
           break
         case 'copy-path':
           clipboard.writeText(path)

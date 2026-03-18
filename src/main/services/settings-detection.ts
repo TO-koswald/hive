@@ -90,7 +90,7 @@ export function detectEditors(): DetectedApp[] {
         }).trim()
         if (result) {
           available = true
-          resolvedCommand = result.split('\n')[0]
+          resolvedCommand = result.split('\n')[0].replace(/\r$/, '')
           break
         }
       } catch {
@@ -168,7 +168,7 @@ export function detectTerminals(): DetectedApp[] {
         }).trim()
         if (result) {
           available = true
-          resolvedCommand = result.split('\n')[0]
+          resolvedCommand = result.split('\n')[0].replace(/\r$/, '')
           break
         }
       } catch {
