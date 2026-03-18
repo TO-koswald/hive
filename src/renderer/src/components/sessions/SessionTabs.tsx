@@ -33,8 +33,12 @@ import { useConnectionStore } from '@/stores/useConnectionStore'
 import { useSettingsStore } from '@/stores/useSettingsStore'
 import { useWorktreeStatusStore } from '@/stores/useWorktreeStatusStore'
 import { useLayoutStore } from '@/stores/useLayoutStore'
+import { useVimModeStore } from '@/stores/useVimModeStore'
+import { useHintStore } from '@/stores/useHintStore'
 import { cn, parseColorQuad } from '@/lib/utils'
 import { toast } from '@/lib/toast'
+import { assignSessionHints } from '@/lib/hint-utils'
+import { HintBadge } from '@/components/ui/HintBadge'
 import {
   ContextMenu,
   ContextMenuContent,
@@ -48,7 +52,7 @@ interface SessionTabProps {
   sessionId: string
   name: string
   isActive: boolean
-  agentSdk: 'opencode' | 'claude-code' | 'terminal'
+  agentSdk: 'opencode' | 'claude-code' | 'codex' | 'terminal'
   onClick: () => void
   onClose: (e: React.MouseEvent) => void
   onMiddleClick: (e: React.MouseEvent) => void
@@ -62,6 +66,7 @@ interface SessionTabProps {
   worktreeId: string
   onCloseOthers: () => void
   onCloseToRight: () => void
+  hintCode?: string
 }
 
 function SessionTab({
@@ -81,11 +86,17 @@ function SessionTab({
   isDragOver,
   worktreeId: _worktreeId,
   onCloseOthers,
-  onCloseToRight
+  onCloseToRight,
+  hintCode
 }: SessionTabProps): React.JSX.Element {
   const [isEditing, setIsEditing] = useState(false)
   const [editName, setEditName] = useState(name)
   const inputRef = useRef<HTMLInputElement>(null)
+
+  const vimMode = useVimModeStore((s) => s.mode)
+  const vimModeEnabled = useSettingsStore((s) => s.vimModeEnabled)
+  const hintMode = useHintStore((s) => s.mode)
+  const hintPendingChar = useHintStore((s) => s.pendingChar)
 
   const sessionStatus = useWorktreeStatusStore(
     (state) => state.sessionStatuses[sessionId]?.status ?? null
@@ -201,6 +212,9 @@ function SessionTab({
             />
           ) : (
             <span className="truncate flex-1">{name || 'Untitled'}</span>
+          )}
+          {hintCode && vimModeEnabled && vimMode === 'normal' && (
+            <HintBadge code={hintCode} mode={hintMode} pendingChar={hintPendingChar} />
           )}
           <button
             onClick={onClose}
@@ -704,7 +718,7 @@ export function SessionTabs(): React.JSX.Element | null {
   }
 
   // Handle creating a new session with a specific agent SDK (from context menu)
-  const handleCreateSessionWithSdk = async (sdk: 'opencode' | 'claude-code' | 'terminal') => {
+  const handleCreateSessionWithSdk = async (sdk: 'opencode' | 'claude-code' | 'codex' | 'terminal') => {
     if (isConnectionMode && selectedConnectionId) {
       const result = await createConnectionSession(selectedConnectionId, sdk)
       if (!result.success) {
@@ -827,25 +841,62 @@ export function SessionTabs(): React.JSX.Element | null {
     setDragOverTabId(null)
   }
 
+  // Resolve scope ID for the active context (may be undefined)
+  const scopeId = isConnectionMode ? selectedConnectionId : selectedWorktreeId
+
+  // Get sessions in tab order (memoized for stable reference)
+  const orderedSessions = useMemo(() => {
+    const sessions = scopeId
+      ? isConnectionMode
+        ? sessionsByConnection.get(scopeId) || []
+        : sessionsByWorktree.get(scopeId) || []
+      : []
+    const tabOrder = scopeId
+      ? isConnectionMode
+        ? tabOrderByConnection.get(scopeId) || []
+        : tabOrderByWorktree.get(scopeId) || []
+      : []
+    return tabOrder
+      .map((id) => sessions.find((s) => s.id === id))
+      .filter((s): s is NonNullable<typeof s> => s !== undefined)
+  }, [
+    scopeId,
+    isConnectionMode,
+    sessionsByConnection,
+    sessionsByWorktree,
+    tabOrderByConnection,
+    tabOrderByWorktree
+  ])
+
+  // Vim/hint state for session tab hints
+  const vimMode = useVimModeStore((s) => s.mode)
+  const vimModeEnabled = useSettingsStore((s) => s.vimModeEnabled)
+  const setSessionHints = useHintStore((s) => s.setSessionHints)
+  const clearSessionHints = useHintStore((s) => s.clearSessionHints)
+
+  const sessionHints = useMemo(
+    () => assignSessionHints(orderedSessions.map((s) => s.id)),
+    [orderedSessions]
+  )
+
+  useEffect(() => {
+    if (vimModeEnabled && vimMode === 'normal') {
+      setSessionHints(sessionHints.sessionHintMap, sessionHints.sessionHintTargetMap)
+    } else {
+      clearSessionHints()
+    }
+    return () => {
+      clearSessionHints()
+    }
+  }, [vimModeEnabled, vimMode, sessionHints, setSessionHints, clearSessionHints])
+
   // Don't render if nothing is selected
   if (!selectedWorktreeId && !selectedConnectionId) {
     return null
   }
 
-  // Resolve scope ID for the active context
-  const scopeId = isConnectionMode ? selectedConnectionId! : selectedWorktreeId!
-
-  const sessions = isConnectionMode
-    ? sessionsByConnection.get(scopeId) || []
-    : sessionsByWorktree.get(scopeId) || []
-  const tabOrder = isConnectionMode
-    ? tabOrderByConnection.get(scopeId) || []
-    : tabOrderByWorktree.get(scopeId) || []
-
-  // Get sessions in tab order
-  const orderedSessions = tabOrder
-    .map((id) => sessions.find((s) => s.id === id))
-    .filter((s): s is NonNullable<typeof s> => s !== undefined)
+  // After early return, scopeId is guaranteed to be defined
+  const resolvedScopeId = scopeId!
 
   // Get file tabs for the current worktree (only regular file tabs, not diff tabs)
   const fileTabs = Array.from(openFiles.values()).filter(
@@ -899,7 +950,14 @@ export function SessionTabs(): React.JSX.Element | null {
               New Claude Code Session
             </ContextMenuItem>
           )}
-          {(availableAgentSdks?.opencode || availableAgentSdks?.claude) && <ContextMenuSeparator />}
+          {availableAgentSdks?.codex && (
+            <ContextMenuItem onSelect={() => handleCreateSessionWithSdk('codex')}>
+              New Codex Session
+            </ContextMenuItem>
+          )}
+          {(availableAgentSdks?.opencode
+            || availableAgentSdks?.claude
+            || availableAgentSdks?.codex) && <ContextMenuSeparator />}
           <ContextMenuItem onSelect={() => handleCreateSessionWithSdk('terminal')}>
             <TerminalSquare className="h-4 w-4 mr-2 text-emerald-500" />
             New Terminal
@@ -923,6 +981,7 @@ export function SessionTabs(): React.JSX.Element | null {
         ref={tabsContainerRef}
         className="flex-1 flex overflow-x-auto scrollbar-hide"
         style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
+        data-testid="session-tabs-scroll-container"
       >
         {orderedSessions.length === 0 &&
         fileTabs.length === 0 &&
@@ -990,17 +1049,18 @@ export function SessionTabs(): React.JSX.Element | null {
                 onDragEnd={handleDragEnd}
                 isDragging={draggedTabId === session.id}
                 isDragOver={dragOverTabId === session.id}
-                worktreeId={scopeId}
+                worktreeId={resolvedScopeId}
                 onCloseOthers={() =>
                   isConnectionMode
-                    ? closeOtherConnectionSessions(scopeId, session.id)
-                    : closeOtherSessions(scopeId, session.id)
+                    ? closeOtherConnectionSessions(resolvedScopeId, session.id)
+                    : closeOtherSessions(resolvedScopeId, session.id)
                 }
                 onCloseToRight={() =>
                   isConnectionMode
-                    ? closeConnectionSessionsToRight(scopeId, session.id)
-                    : closeSessionsToRight(scopeId, session.id)
+                    ? closeConnectionSessionsToRight(resolvedScopeId, session.id)
+                    : closeSessionsToRight(resolvedScopeId, session.id)
                 }
+                hintCode={sessionHints.sessionHintMap.get(session.id)}
               />
             ))}
             {/* File viewer tabs */}

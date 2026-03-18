@@ -11,6 +11,7 @@ export function SettingsGeneral(): React.JSX.Element {
   const { setTheme } = useThemeStore()
   const {
     autoStartSession,
+    vimModeEnabled,
     breedType,
     showModelIcons,
     showModelProvider,
@@ -58,6 +59,33 @@ export function SettingsGeneral(): React.JSX.Element {
             className={cn(
               'pointer-events-none block h-4 w-4 rounded-full bg-background shadow-lg ring-0 transition-transform',
               autoStartSession ? 'translate-x-4' : 'translate-x-0'
+            )}
+          />
+        </button>
+      </div>
+
+      {/* Vim mode */}
+      <div className="flex items-center justify-between">
+        <div>
+          <label className="text-sm font-medium">Vim mode</label>
+          <p className="text-xs text-muted-foreground">
+            Enable vim-style keyboard navigation with hints, hjkl scrolling, and mode switching
+          </p>
+        </div>
+        <button
+          role="switch"
+          aria-checked={vimModeEnabled}
+          onClick={() => updateSetting('vimModeEnabled', !vimModeEnabled)}
+          className={cn(
+            'relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors',
+            vimModeEnabled ? 'bg-primary' : 'bg-muted'
+          )}
+          data-testid="vim-mode-enabled-toggle"
+        >
+          <span
+            className={cn(
+              'pointer-events-none block h-4 w-4 rounded-full bg-background shadow-lg ring-0 transition-transform',
+              vimModeEnabled ? 'translate-x-4' : 'translate-x-0'
             )}
           />
         </button>
@@ -175,6 +203,18 @@ export function SettingsGeneral(): React.JSX.Element {
             data-testid="agent-sdk-claude-code"
           >
             Claude Code
+          </button>
+          <button
+            onClick={() => updateSetting('defaultAgentSdk', 'codex')}
+            className={cn(
+              'px-3 py-1.5 rounded-md text-sm border transition-colors',
+              defaultAgentSdk === 'codex'
+                ? 'bg-primary text-primary-foreground border-primary'
+                : 'bg-muted/50 text-muted-foreground border-border hover:bg-accent/50'
+            )}
+            data-testid="agent-sdk-codex"
+          >
+            Codex
           </button>
           <button
             onClick={() => updateSetting('defaultAgentSdk', 'terminal')}

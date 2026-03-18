@@ -13,10 +13,10 @@ import { RunTab } from './RunTab'
 import { toast } from '@/lib/toast'
 import { useGhosttyPromotion } from '@/hooks/useGhosttyPromotion'
 
-const tabs: { id: BottomPanelTab; label: string }[] = [
-  { id: 'setup', label: 'Setup' },
-  { id: 'run', label: 'Run' },
-  { id: 'terminal', label: 'Terminal' }
+const tabs: { id: BottomPanelTab; label: string; keybind: string }[] = [
+  { id: 'setup', label: 'Setup', keybind: 'S' },
+  { id: 'run', label: 'Run', keybind: 'R' },
+  { id: 'terminal', label: 'Terminal', keybind: 'T' }
 ]
 
 interface BottomPanelProps {
@@ -45,6 +45,7 @@ export function BottomPanel({
     selectedWorktreeId ? (s.scriptStates[selectedWorktreeId]?.runOutputVersion ?? 0) : 0
   )
   const customChromeCommand = useSettingsStore((s) => s.customChromeCommand)
+  const vimModeEnabled = useSettingsStore((s) => s.vimModeEnabled)
 
   // Per-worktree detected URLs so switching worktrees shows the correct port instantly.
   const [detectedUrls, setDetectedUrls] = useState<Record<string, string>>({})
@@ -91,7 +92,7 @@ export function BottomPanel({
             data-testid={`bottom-panel-tab-${tab.id}`}
             data-active={effectiveTab === tab.id}
           >
-            {tab.label}
+            {vimModeEnabled ? <><span className="text-primary">{tab.keybind}</span>{tab.label.slice(1)}</> : tab.label}
             {effectiveTab === tab.id && (
               <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary" />
             )}

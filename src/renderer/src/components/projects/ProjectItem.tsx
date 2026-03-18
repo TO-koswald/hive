@@ -38,7 +38,8 @@ import {
   ContextMenuSubContent,
   ContextMenuCheckboxItem
 } from '@/components/ui/context-menu'
-import { useProjectStore, useWorktreeStore, useSpaceStore, useConnectionStore } from '@/stores'
+import { useProjectStore, useWorktreeStore, useSpaceStore, useConnectionStore, useHintStore, useVimModeStore, useSettingsStore } from '@/stores'
+import { HintBadge } from '@/components/ui/HintBadge'
 import { WorktreeList, BranchPickerDialog } from '@/components/worktrees'
 import { LanguageIcon } from './LanguageIcon'
 import { HighlightedText } from './HighlightedText'
@@ -107,6 +108,16 @@ export function ProjectItem({
 
   const projectSpaceIds = projectSpaceMap[project.id] ?? []
 
+  const plusHint = useHintStore((s) => s.hintMap.get('plus:' + project.id))
+  const hintMode = useHintStore((s) => s.mode)
+  const hintPendingChar = useHintStore((s) => s.pendingChar)
+  const isSearchMode = useHintStore((s) => s.filterActive)
+  const inputFocused = useHintStore((s) => s.inputFocused)
+
+  const vimMode = useVimModeStore((s) => s.mode)
+  const vimModeEnabled = useSettingsStore((s) => s.vimModeEnabled)
+  const projectHint = useHintStore((s) => s.hintMap.get('project:' + project.id))
+
   const [editName, setEditName] = useState(project.name)
   const [branchPickerOpen, setBranchPickerOpen] = useState(false)
   const [removeConfirmOpen, setRemoveConfirmOpen] = useState(false)
@@ -115,7 +126,7 @@ export function ProjectItem({
   const isCreatingWorktree = creatingForProjectId === project.id
 
   const isSelected = selectedProjectId === project.id
-  const isExpanded = expandedProjectIds.has(project.id)
+  const isExpanded = isSearchMode || expandedProjectIds.has(project.id)
   const isEditing = editingProjectId === project.id
 
   // Focus input when editing starts (deferred to run after menu closes)
@@ -193,27 +204,40 @@ export function ProjectItem({
     toast.success('Project refreshed')
   }
 
+  const doCreateWorktree = useCallback(async (): Promise<void> => {
+    if (isCreatingWorktree) return
+
+    // Check if repo has any commits before attempting worktree creation
+    const hasCommits = await window.worktreeOps.hasCommits(project.path)
+    if (!hasCommits) {
+      setNoCommitsDialogOpen(true)
+      return
+    }
+
+    const result = await createWorktree(project.id, project.path, project.name)
+    if (result.success) {
+      gitToast.worktreeCreated(project.name)
+    } else {
+      gitToast.operationFailed('create worktree', result.error)
+    }
+  }, [isCreatingWorktree, createWorktree, project])
+
   const handleCreateWorktree = useCallback(
     async (e: React.MouseEvent): Promise<void> => {
       e.stopPropagation()
-      if (isCreatingWorktree) return
-
-      // Check if repo has any commits before attempting worktree creation
-      const hasCommits = await window.worktreeOps.hasCommits(project.path)
-      if (!hasCommits) {
-        setNoCommitsDialogOpen(true)
-        return
-      }
-
-      const result = await createWorktree(project.id, project.path, project.name)
-      if (result.success) {
-        gitToast.worktreeCreated(project.name)
-      } else {
-        gitToast.operationFailed('create worktree', result.error)
-      }
+      await doCreateWorktree()
     },
-    [isCreatingWorktree, createWorktree, project]
+    [doCreateWorktree]
   )
+
+  useEffect(() => {
+    const handler = (e: Event): void => {
+      const ce = e as CustomEvent<{ projectId: string }>
+      if (ce.detail.projectId === project.id) doCreateWorktree()
+    }
+    window.addEventListener('hive:hint-plus', handler)
+    return () => window.removeEventListener('hive:hint-plus', handler)
+  }, [project.id, doCreateWorktree])
 
   const handleBranchSelect = useCallback(
     async (branchName: string, prNumber?: number): Promise<void> => {
@@ -255,6 +279,11 @@ export function ProjectItem({
             onClick={handleClick}
             data-testid={`project-item-${project.id}`}
           >
+            {/* Project Hint Badge (visible in vim normal mode, left of chevron) */}
+            {!isEditing && projectHint && vimModeEnabled && vimMode === 'normal' && (
+              <HintBadge code={projectHint} mode={hintMode} pendingChar={hintPendingChar} />
+            )}
+
             {/* Expand/Collapse Chevron */}
             <Button
               variant="ghost"
@@ -306,6 +335,11 @@ export function ProjectItem({
                   />
                 )}
               </div>
+            )}
+
+            {/* Plus Hint Badge (visible when filter is active and search field is focused) */}
+            {!isEditing && plusHint && (inputFocused || (vimModeEnabled && vimMode === 'normal')) && (
+              <HintBadge code={plusHint} mode={hintMode} pendingChar={hintPendingChar} />
             )}
 
             {/* Create Worktree Button (hidden in connection mode) */}

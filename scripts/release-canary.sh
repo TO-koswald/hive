@@ -18,9 +18,11 @@ fatal() { err "$1"; exit 1; }
 DRY_RUN=false
 SHUTDOWN_AFTER=false
 SLEEP_AFTER=false
+AUTO_YES=false
 SUDO_KEEPALIVE_PID=""
 for arg in "$@"; do
   case "$arg" in
+    -y|--yes) AUTO_YES=true ;;
     --dry-run) DRY_RUN=true ;;
     --shutdown) SHUTDOWN_AFTER=true ;;
     --sleep) SLEEP_AFTER=true ;;
@@ -38,6 +40,10 @@ fi
 
 if $DRY_RUN && $SLEEP_AFTER; then
   fatal "Cannot combine --dry-run and --sleep"
+fi
+
+if $AUTO_YES; then
+  warn "Auto-accepting all prompts (-y)"
 fi
 
 if $DRY_RUN; then
@@ -204,14 +210,16 @@ ${RELEASE_NOTES}"
   echo "$RELEASE_NOTES"
   echo -e "${CYAN}───────────────────────────────────────────────────${NC}"
   echo ""
-  read -rp "Edit release notes in \$EDITOR before publishing? [y/N] " edit_notes
-  if [[ "$edit_notes" =~ ^[Yy]$ ]]; then
-    NOTES_TMPFILE=$(mktemp "${TMPDIR:-/tmp}/hive-canary-release-notes.XXXXXX")
-    echo "$RELEASE_NOTES" > "$NOTES_TMPFILE"
-    ${EDITOR:-vim} "$NOTES_TMPFILE"
-    RELEASE_NOTES=$(cat "$NOTES_TMPFILE")
-    rm -f "$NOTES_TMPFILE"
-    ok "Release notes updated"
+  if ! $AUTO_YES; then
+    read -rp "Edit release notes in \$EDITOR before publishing? [y/N] " edit_notes
+    if [[ "$edit_notes" =~ ^[Yy]$ ]]; then
+      NOTES_TMPFILE=$(mktemp "${TMPDIR:-/tmp}/hive-canary-release-notes.XXXXXX")
+      echo "$RELEASE_NOTES" > "$NOTES_TMPFILE"
+      ${EDITOR:-vim} "$NOTES_TMPFILE"
+      RELEASE_NOTES=$(cat "$NOTES_TMPFILE")
+      rm -f "$NOTES_TMPFILE"
+      ok "Release notes updated"
+    fi
   fi
 else
   RELEASE_NOTES="Canary build from branch ${CURRENT_BRANCH} (${SHORT_SHA})"
@@ -227,8 +235,10 @@ echo "  3. Build for arm64 + x64 (sign + notarize)"
 echo "  4. Publish DMGs/ZIPs to GitHub Release v${NEW_VERSION} (prerelease)"
 echo "  5. Update Homebrew canary cask with new SHA256 checksums"
 echo ""
-read -rp "Proceed? [Y/n] " confirm
-[[ "$confirm" =~ ^[Nn]$ ]] && { info "Aborted."; exit 0; }
+if ! $AUTO_YES; then
+  read -rp "Proceed? [Y/n] " confirm
+  [[ "$confirm" =~ ^[Nn]$ ]] && { info "Aborted."; exit 0; }
+fi
 
 # Arm EXIT trap AFTER user confirmation (so aborting doesn't trigger shutdown/notification)
 RELEASE_SUCCEEDED=false

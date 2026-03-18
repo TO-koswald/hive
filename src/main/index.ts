@@ -1,7 +1,7 @@
 import { loadShellEnv } from './services/shell-env'
 import { app, shell, BrowserWindow, screen, ipcMain, clipboard } from 'electron'
 import { join } from 'path'
-import { spawn, exec, execFileSync } from 'child_process'
+import { spawn, exec } from 'child_process'
 import { promisify } from 'util'
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'fs'
 import { electronApp, is } from '@electron-toolkit/utils'
@@ -30,10 +30,12 @@ import {
 import { buildMenu, updateMenuState } from './menu'
 import type { MenuState } from './menu'
 import { createLogger, getLogDir } from './services/logger'
+import { detectAgentSdks } from './services/system-info'
 import { createResponseLog, appendResponseLog } from './services/response-logger'
 import { notificationService } from './services/notification-service'
 import { updaterService } from './services/updater'
 import { ClaudeCodeImplementer } from './services/claude-code-implementer'
+import { CodexImplementer } from './services/codex-implementer'
 import { AgentSdkManager } from './services/agent-sdk-manager'
 import { resolveClaudeBinaryPath } from './services/claude-binary-resolver'
 import type { AgentSdkImplementer } from './services/agent-sdk-types'
@@ -286,6 +288,9 @@ function registerSystemHandlers(): void {
           }
           spawn('open', ['-a', 'Ghostty', path], { detached: true, stdio: 'ignore' })
           break
+        case 'android-studio':
+          spawn('open', ['-a', 'Android Studio', path], { detached: true, stdio: 'ignore' })
+          break
         case 'copy-path':
           clipboard.writeText(path)
           break
@@ -303,24 +308,7 @@ function registerSystemHandlers(): void {
 
   // Detect which agent SDKs are installed on the system (first-launch setup)
   ipcMain.handle('system:detectAgentSdks', () => {
-    const whichCmd = process.platform === 'win32' ? 'where' : 'which'
-    const check = (binary: string): boolean => {
-      try {
-        const result = execFileSync(whichCmd, [binary], {
-          encoding: 'utf-8',
-          timeout: 5000,
-          env: process.env
-        }).trim()
-        const resolved = result.split('\n')[0].trim()
-        return !!resolved && existsSync(resolved)
-      } catch {
-        return false
-      }
-    }
-    return {
-      opencode: check('opencode'),
-      claude: check('claude')
-    }
+    return detectAgentSdks()
   })
 
   // Quit the app (needed for macOS where window.close() doesn't quit)
@@ -590,7 +578,9 @@ app.whenReady().then(async () => {
       renameSession: async () => {},
       setMainWindow: () => {}
     } satisfies AgentSdkImplementer
-    const sdkManager = new AgentSdkManager(openCodePlaceholder, claudeImpl)
+    const codexImpl = new CodexImplementer()
+    codexImpl.setDatabaseService(getDatabase())
+    const sdkManager = new AgentSdkManager([openCodePlaceholder, claudeImpl, codexImpl])
     sdkManager.setMainWindow(mainWindow)
 
     const databaseService = getDatabase()
@@ -640,6 +630,8 @@ app.on('window-all-closed', () => {
 
 // Cleanup when app is about to quit
 app.on('will-quit', async () => {
+  // Cleanup updater timers
+  updaterService.cleanup()
   // Cleanup terminal PTYs
   cleanupTerminals()
   // Cleanup running scripts

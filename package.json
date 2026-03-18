@@ -1,6 +1,6 @@
 {
   "name": "hive",
-  "version": "1.0.61",
+  "version": "1.0.65",
   "description": "Native macOS app for managing git worktrees and AI-powered coding sessions",
   "main": "./out/main/index.js",
   "author": "morapelker",
@@ -49,16 +49,18 @@
     "lint": "eslint . --ext .ts,.tsx",
     "lint:fix": "eslint . --ext .ts,.tsx --fix",
     "format": "prettier --write \"src/**/*.{ts,tsx,css}\"",
+    "probe:codex-app-server": "pnpm exec tsc -p tsconfig.scripts.json --outDir dist/scripts-probe && node dist/scripts-probe/scripts/codex-app-server-probe.js",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:e2e": "playwright test",
     "build:native": "cd src/native && npx node-gyp rebuild",
     "release": "bash scripts/release.sh",
     "release:canary": "bash scripts/release-canary.sh",
+    "install:mac": "bash scripts/install.sh",
     "codegen": "graphql-codegen --config src/shared/codegen.ts"
   },
   "dependencies": {
-    "@anthropic-ai/claude-agent-sdk": "^0.2.76",
+    "@anthropic-ai/claude-agent-sdk": "^0.2.77",
     "@electron-toolkit/utils": "^3.0.0",
     "@monaco-editor/react": "^4.7.0",
     "@opencode-ai/sdk": "^1.1.51",

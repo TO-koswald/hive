@@ -111,7 +111,7 @@ if (typeof window !== 'undefined') {
         getAppVersion: vi.fn().mockResolvedValue('1.0.0'),
         getAppPaths: vi.fn().mockResolvedValue({ userData: '/tmp', home: '/tmp', logs: '/tmp' }),
         isLogMode: vi.fn().mockResolvedValue(false),
-        detectAgentSdks: vi.fn().mockResolvedValue({ opencode: true, claude: true }),
+        detectAgentSdks: vi.fn().mockResolvedValue({ opencode: true, claude: true, codex: false }),
         quitApp: vi.fn().mockResolvedValue(undefined),
         openInApp: vi.fn().mockResolvedValue({ success: true }),
         openInChrome: vi.fn().mockResolvedValue({ success: true }),

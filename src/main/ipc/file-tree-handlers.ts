@@ -339,7 +339,7 @@ function emitFileTreeChange(
   eventType: FileEventType,
   changedPath: string
 ): void {
-  if (!mainWindow) return
+  if (!mainWindow || mainWindow.isDestroyed()) return
 
   // Accumulate the event
   let queue = pendingEvents.get(worktreePath)
@@ -371,7 +371,8 @@ function emitFileTreeChange(
     }))
 
     const payload = { worktreePath, events }
-    mainWindow?.webContents.send('file-tree:change', payload)
+    if (!mainWindow || mainWindow.isDestroyed()) return
+    mainWindow.webContents.send('file-tree:change', payload)
 
     // EventBus: emit individual events for backward compat with GraphQL subscribers
     try {

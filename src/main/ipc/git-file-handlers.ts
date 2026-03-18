@@ -630,7 +630,7 @@ export function registerGitFileHandlers(window: BrowserWindow): void {
           })
         }
 
-        if (mainWindow) {
+        if (mainWindow && !mainWindow.isDestroyed()) {
           mainWindow.webContents.send('git:statusChanged', { worktreePath })
         }
         try {

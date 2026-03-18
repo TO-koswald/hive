@@ -21,6 +21,7 @@ import {
   DropdownMenuItem
 } from '@/components/ui/dropdown-menu'
 import { toast } from '@/lib/toast'
+import { cn } from '@/lib/utils'
 import { useLayoutStore } from '@/stores/useLayoutStore'
 import { useSessionHistoryStore } from '@/stores/useSessionHistoryStore'
 import { useSettingsStore } from '@/stores/useSettingsStore'
@@ -30,6 +31,7 @@ import { useConnectionStore } from '@/stores/useConnectionStore'
 import { useSessionStore } from '@/stores/useSessionStore'
 import { useGitStore } from '@/stores/useGitStore'
 import { useWorktreeStatusStore } from '@/stores/useWorktreeStatusStore'
+import { useVimModeStore } from '@/stores/useVimModeStore'
 import { QuickActions } from './QuickActions'
 import { usePRDetection } from '@/hooks/usePRDetection'
 import hiveLogo from '@/assets/icon.png'
@@ -70,6 +72,8 @@ export function Header(): React.JSX.Element {
   const updateSessionName = useSessionStore((s) => s.updateSessionName)
   const setPendingMessage = useSessionStore((s) => s.setPendingMessage)
   const setActiveSession = useSessionStore((s) => s.setActiveSession)
+  const vimMode = useVimModeStore((s) => s.mode)
+  const vimModeEnabled = useSettingsStore((s) => s.vimModeEnabled)
   const [conflictFixFlow, setConflictFixFlow] = useState<ConflictFixFlow | null>(null)
 
   // Monitor PR session stream events for PR URL detection
@@ -419,6 +423,19 @@ export function Header(): React.JSX.Element {
           </span>
         ) : (
           <span className="text-sm font-medium">Hive</span>
+        )}
+        {vimModeEnabled && (
+          <span
+            className={cn(
+              'text-[10px] font-mono px-1.5 py-0.5 rounded border select-none',
+              vimMode === 'normal'
+                ? 'text-muted-foreground bg-muted/50 border-border/50'
+                : 'text-primary bg-primary/10 border-primary/30'
+            )}
+            data-testid="vim-mode-pill"
+          >
+            {vimMode === 'normal' ? 'NORMAL' : 'INSERT'}
+          </span>
         )}
       </div>
       {/* Center: Quick Actions */}

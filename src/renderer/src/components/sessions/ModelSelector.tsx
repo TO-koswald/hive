@@ -37,9 +37,14 @@ function getVariantKeys(model: ModelInfo): string[] {
 
 interface ModelSelectorProps {
   sessionId?: string
+  // Controlled mode (for settings)
+  value?: { providerID: string; modelID: string; variant?: string } | null
+  onChange?: (model: { providerID: string; modelID: string; variant?: string }) => void
+  // Override the SDK used for model listing (e.g. force 'opencode' in settings when defaultAgentSdk is 'terminal')
+  agentSdkOverride?: 'opencode' | 'claude-code' | 'codex'
 }
 
-export function ModelSelector({ sessionId }: ModelSelectorProps): React.JSX.Element {
+export function ModelSelector({ sessionId, value, onChange, agentSdkOverride }: ModelSelectorProps): React.JSX.Element {
   // Read per-session model from session store (with global fallback)
   const session = useSessionStore((state) => {
     if (!sessionId) return null
@@ -54,7 +59,9 @@ export function ModelSelector({ sessionId }: ModelSelectorProps): React.JSX.Elem
     return null
   })
   const defaultAgentSdk = useSettingsStore((s) => s.defaultAgentSdk)
-  const agentSdk = session?.agent_sdk ?? defaultAgentSdk ?? 'opencode'
+  const rawAgentSdk = agentSdkOverride ?? session?.agent_sdk ?? defaultAgentSdk ?? 'opencode'
+  // Terminal SDK has no models — fall back to opencode for model listing
+  const agentSdk = rawAgentSdk === 'terminal' ? 'opencode' : rawAgentSdk
   const globalModel = useSettingsStore((state) => resolveModelForSdk(agentSdk, state))
   const sessionModel =
     session?.model_id && session.model_provider_id
@@ -64,7 +71,9 @@ export function ModelSelector({ sessionId }: ModelSelectorProps): React.JSX.Elem
           variant: session.model_variant ?? undefined
         }
       : null
-  const selectedModel = sessionModel ?? globalModel
+  // Controlled mode: non-null value overrides; null means "use global fallback."
+  // SettingsModels passes null for cleared mode defaults — display the effective model, not empty.
+  const selectedModel = (value !== undefined && value !== null) ? value : (sessionModel ?? globalModel)
   const showModelProvider = useSettingsStore((s) => s.showModelProvider)
   const favoriteModels = useSettingsStore((s) => s.favoriteModels)
   const toggleFavoriteModel = useSettingsStore((s) => s.toggleFavoriteModel)
@@ -151,7 +160,11 @@ export function ModelSelector({ sessionId }: ModelSelectorProps): React.JSX.Elem
           ? variantKeys[0]
           : undefined
     const newModel = { providerID: model.providerID, modelID: model.id, variant }
-    if (sessionId) {
+    
+    // Use controlled onChange if provided (for settings), otherwise update store
+    if (onChange) {
+      onChange(newModel)
+    } else if (sessionId) {
       useSessionStore.getState().setSessionModel(sessionId, newModel)
     } else {
       useSettingsStore.getState().setSelectedModelForSdk(agentSdk, newModel)
@@ -159,12 +172,20 @@ export function ModelSelector({ sessionId }: ModelSelectorProps): React.JSX.Elem
   }
 
   function handleSelectVariant(model: ModelInfo, variant: string): void {
-    useSettingsStore.getState().setModelVariantDefault(model.providerID, model.id, variant)
     const newModel = { providerID: model.providerID, modelID: model.id, variant }
-    if (sessionId) {
-      useSessionStore.getState().setSessionModel(sessionId, newModel)
+
+    // Use controlled onChange if provided (for settings), otherwise update store
+    if (onChange) {
+      // In controlled mode, just notify parent - don't update global variant preference
+      onChange(newModel)
     } else {
-      useSettingsStore.getState().setSelectedModelForSdk(agentSdk, newModel)
+      // In uncontrolled mode, persist variant preference globally
+      useSettingsStore.getState().setModelVariantDefault(model.providerID, model.id, variant)
+      if (sessionId) {
+        useSessionStore.getState().setSessionModel(sessionId, newModel)
+      } else {
+        useSettingsStore.getState().setSelectedModelForSdk(agentSdk, newModel)
+      }
     }
   }
 
@@ -209,28 +230,39 @@ export function ModelSelector({ sessionId }: ModelSelectorProps): React.JSX.Elem
     const nextIndex = (currentIndex + 1) % variantKeys.length
     const nextVariant = variantKeys[nextIndex]
 
-    useSettingsStore
-      .getState()
-      .setModelVariantDefault(currentModel.providerID, currentModel.id, nextVariant)
     const newModel = {
       providerID: currentModel.providerID,
       modelID: currentModel.id,
       variant: nextVariant
     }
-    if (sessionId) {
-      useSessionStore.getState().setSessionModel(sessionId, newModel)
+
+    // Use controlled onChange if provided (for settings), otherwise update store
+    if (onChange) {
+      // In controlled mode, just notify parent - don't update global variant preference
+      onChange(newModel)
     } else {
-      useSettingsStore.getState().setSelectedModelForSdk(agentSdk, newModel)
+      // In uncontrolled mode, persist variant preference globally
+      useSettingsStore
+        .getState()
+        .setModelVariantDefault(currentModel.providerID, currentModel.id, nextVariant)
+      if (sessionId) {
+        useSessionStore.getState().setSessionModel(sessionId, newModel)
+      } else {
+        useSettingsStore.getState().setSelectedModelForSdk(agentSdk, newModel)
+      }
     }
     toast.success(`Variant: ${nextVariant}`)
-  }, [selectedModel, currentModel, agentSdk, sessionId])
+  }, [selectedModel, currentModel, agentSdk, sessionId, onChange])
 
-  // Listen for centralized Alt+T shortcut via custom event
+  // Listen for centralized Alt+T shortcut via custom event (session selectors only).
+  // Controlled-mode selectors (e.g. Settings > Models) must not react to the global
+  // shortcut — otherwise every selector on the page cycles its variant at once.
   useEffect(() => {
+    if (onChange) return
     const handleCycleVariant = (): void => cycleVariant()
     window.addEventListener('hive:cycle-variant', handleCycleVariant)
     return () => window.removeEventListener('hive:cycle-variant', handleCycleVariant)
-  }, [cycleVariant])
+  }, [cycleVariant, onChange])
 
   // Determine display name for the pill
   const displayName = currentModel

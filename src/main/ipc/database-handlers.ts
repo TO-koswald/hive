@@ -266,6 +266,14 @@ export function registerDatabaseHandlers(): void {
     getDatabase().updateSessionDraft(sessionId, draft)
   })
 
+  ipcMain.handle('db:sessionMessage:list', (_event, sessionId: string) => {
+    return getDatabase().getSessionMessages(sessionId)
+  })
+
+  ipcMain.handle('db:sessionActivity:list', (_event, sessionId: string) => {
+    return getDatabase().getSessionActivities(sessionId)
+  })
+
   // Spaces
   ipcMain.handle('db:space:list', () => {
     return getDatabase().listSpaces()

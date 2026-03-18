@@ -86,7 +86,7 @@ const db = {
       connection_id?: string | null
       name?: string | null
       opencode_session_id?: string | null
-      agent_sdk?: 'opencode' | 'claude-code'
+      agent_sdk?: 'opencode' | 'claude-code' | 'codex' | 'terminal'
       model_provider_id?: string | null
       model_id?: string | null
       model_variant?: string | null
@@ -103,7 +103,7 @@ const db = {
         name?: string | null
         status?: 'active' | 'completed' | 'error'
         opencode_session_id?: string | null
-        agent_sdk?: 'opencode' | 'claude-code'
+        agent_sdk?: 'opencode' | 'claude-code' | 'codex' | 'terminal'
         mode?: 'build' | 'plan'
         model_provider_id?: string | null
         model_id?: string | null
@@ -128,6 +128,14 @@ const db = {
       ipcRenderer.invoke('db:session:getByConnection', connectionId),
     getActiveByConnection: (connectionId: string) =>
       ipcRenderer.invoke('db:session:getActiveByConnection', connectionId)
+  },
+
+  sessionMessage: {
+    list: (sessionId: string) => ipcRenderer.invoke('db:sessionMessage:list', sessionId)
+  },
+
+  sessionActivity: {
+    list: (sessionId: string) => ipcRenderer.invoke('db:sessionActivity:list', sessionId)
   },
 
   // Spaces
@@ -186,6 +194,14 @@ const projectOps = {
   // Detect the primary programming language of a project
   detectLanguage: (projectPath: string): Promise<string | null> =>
     ipcRenderer.invoke('project:detectLanguage', projectPath),
+
+  // Find .xcworkspace file for Swift projects
+  findXcworkspace: (projectPath: string): Promise<string | null> =>
+    ipcRenderer.invoke('project:findXcworkspace', projectPath),
+
+  // Detect whether a project is an Android project
+  isAndroidProject: (projectPath: string): Promise<boolean> =>
+    ipcRenderer.invoke('project:isAndroidProject', projectPath),
 
   // Load custom language icons as data URLs
   loadLanguageIcons: (): Promise<Record<string, string>> =>
@@ -1038,7 +1054,8 @@ const opencodeOps = {
           | { type: 'text'; text: string }
           | { type: 'file'; mime: string; url: string; filename?: string }
         >,
-    model?: { providerID: string; modelID: string; variant?: string }
+    model?: { providerID: string; modelID: string; variant?: string },
+    options?: { codexFastMode?: boolean }
   ): Promise<{ success: boolean; error?: string }> => {
     const parts =
       typeof messageOrParts === 'string'
@@ -1048,7 +1065,8 @@ const opencodeOps = {
       worktreePath,
       sessionId: opencodeSessionId,
       parts,
-      model
+      model,
+      options
     })
   },
 
@@ -1075,7 +1093,7 @@ const opencodeOps = {
 
   // List available models from all configured providers
   listModels: (opts?: {
-    agentSdk?: 'opencode' | 'claude-code'
+    agentSdk?: 'opencode' | 'claude-code' | 'codex' | 'terminal'
   }): Promise<{
     success: boolean
     providers: Record<string, unknown>
@@ -1087,15 +1105,15 @@ const opencodeOps = {
     providerID: string
     modelID: string
     variant?: string
-    agentSdk?: 'opencode' | 'claude-code'
-  }): Promise<{ success: boolean; error?: string }> =>
+    agentSdk?: 'opencode' | 'claude-code' | 'codex' | 'terminal'
+  } | null): Promise<{ success: boolean; error?: string }> =>
     ipcRenderer.invoke('opencode:setModel', model),
 
   // Get model info (name, context limit)
   modelInfo: (
     worktreePath: string,
     modelId: string,
-    agentSdk?: 'opencode' | 'claude-code'
+    agentSdk?: 'opencode' | 'claude-code' | 'codex' | 'terminal'
   ): Promise<{
     success: boolean
     model?: { id: string; name: string; limit: { context: number } }

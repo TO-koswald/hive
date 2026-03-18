@@ -47,7 +47,8 @@ import {
   DropdownMenuSubTrigger,
   DropdownMenuSubContent
 } from '@/components/ui/dropdown-menu'
-import { useWorktreeStore, useProjectStore, useConnectionStore, usePinnedStore } from '@/stores'
+import { useWorktreeStore, useProjectStore, useConnectionStore, usePinnedStore, useHintStore, useVimModeStore, useSettingsStore } from '@/stores'
+import { HintBadge } from '@/components/ui/HintBadge'
 import { useGitStore } from '@/stores/useGitStore'
 import { useScriptStore } from '@/stores/useScriptStore'
 import { useWorktreeStatusStore } from '@/stores/useWorktreeStatusStore'
@@ -121,6 +122,13 @@ export function WorktreeItem({
   const isPinned = usePinnedStore((s) => s.pinnedWorktreeIds.has(worktree.id))
   const pinWorktree = usePinnedStore((s) => s.pinWorktree)
   const unpinWorktree = usePinnedStore((s) => s.unpinWorktree)
+
+  const hint = useHintStore((s) => s.hintMap.get(worktree.id))
+  const hintMode = useHintStore((s) => s.mode)
+  const hintPendingChar = useHintStore((s) => s.pendingChar)
+  const inputFocused = useHintStore((s) => s.inputFocused)
+  const vimMode = useVimModeStore((s) => s.mode)
+  const vimModeEnabled = useSettingsStore((s) => s.vimModeEnabled)
 
   const handleTogglePin = useCallback(async (): Promise<void> => {
     if (isPinned) {
@@ -628,6 +636,9 @@ export function WorktreeItem({
               )}
             </div>
           </div>
+
+          {/* Hint Badge (visible when filter is active and search field is focused) */}
+          {hint && (inputFocused || (vimModeEnabled && vimMode === 'normal')) && <HintBadge code={hint} mode={hintMode} pendingChar={hintPendingChar} />}
 
           {/* Unread dot badge */}
           {worktreeStatus === 'unread' && (

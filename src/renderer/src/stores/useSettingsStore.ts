@@ -23,6 +23,12 @@ export interface SelectedModel {
   variant?: string
 }
 
+export interface ModeDefaultModels {
+  build: SelectedModel | null
+  plan: SelectedModel | null
+  ask: SelectedModel | null
+}
+
 export type QuickActionType = 'cursor' | 'terminal' | 'copy-path' | 'finder'
 
 export interface CommandFilterSettings {
@@ -36,6 +42,7 @@ export interface AppSettings {
   // General
   autoStartSession: boolean
   breedType: 'dogs' | 'cats'
+  vimModeEnabled: boolean
 
   // Editor
   defaultEditor: EditorOption
@@ -51,6 +58,7 @@ export interface AppSettings {
   // Model
   selectedModel: SelectedModel | null
   selectedModelByProvider: Record<string, SelectedModel>
+  defaultModels: ModeDefaultModels | null
 
   // Quick Actions
   lastOpenAction: QuickActionType | null
@@ -74,13 +82,15 @@ export interface AppSettings {
   showUsageIndicator: boolean
 
   // Agent SDK
-  defaultAgentSdk: 'opencode' | 'claude-code' | 'terminal'
+  defaultAgentSdk: 'opencode' | 'claude-code' | 'codex' | 'terminal'
 
   // Setup
   initialSetupComplete: boolean
 
   // Chat
   stripAtMentions: boolean
+  codexFastMode: boolean
+  codexFastModeAccepted: boolean
 
   // Updates
   updateChannel: 'stable' | 'canary'
@@ -96,6 +106,7 @@ export interface AppSettings {
 const DEFAULT_SETTINGS: AppSettings = {
   autoStartSession: true,
   breedType: 'dogs',
+  vimModeEnabled: false,
   defaultEditor: 'vscode',
   customEditorCommand: '',
   defaultTerminal: 'terminal',
@@ -105,6 +116,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   ghosttyPromotionDismissed: false,
   selectedModel: null,
   selectedModelByProvider: {},
+  defaultModels: null,
   lastOpenAction: null,
   favoriteModels: [],
   customChromeCommand: '',
@@ -114,6 +126,8 @@ const DEFAULT_SETTINGS: AppSettings = {
   showUsageIndicator: true,
   defaultAgentSdk: 'opencode',
   stripAtMentions: true,
+  codexFastMode: false,
+  codexFastModeAccepted: false,
   updateChannel: 'stable',
   skippedUpdateVersion: null,
   initialSetupComplete: false,
@@ -142,7 +156,7 @@ interface SettingsState extends AppSettings {
   isLoading: boolean
 
   // Cached SDK availability (non-persisted, re-detected each launch)
-  availableAgentSdks: { opencode: boolean; claude: boolean } | null
+  availableAgentSdks: { opencode: boolean; claude: boolean; codex: boolean } | null
 
   // Actions
   openSettings: (section?: string) => void
@@ -150,14 +164,16 @@ interface SettingsState extends AppSettings {
   setActiveSection: (section: string) => void
   updateSetting: <K extends keyof AppSettings>(key: K, value: AppSettings[K]) => void
   setSelectedModel: (
-    model: SelectedModel,
+    model: SelectedModel | null,
     agentSdk?: AppSettings['defaultAgentSdk']
   ) => Promise<void>
   setSelectedModelForSdk: (
     agentSdk: AppSettings['defaultAgentSdk'],
-    model: SelectedModel,
+    model: SelectedModel | null,
     options?: { skipBackendPush?: boolean }
   ) => Promise<void>
+  setModeDefaultModel: (mode: 'build' | 'plan' | 'ask', model: SelectedModel | null) => Promise<void>
+  getModelForMode: (mode: 'build' | 'plan' | 'ask') => SelectedModel | null
   toggleFavoriteModel: (providerID: string, modelID: string) => void
   setModelVariantDefault: (providerID: string, modelID: string, variant: string) => void
   getModelVariantDefault: (providerID: string, modelID: string) => string | undefined
@@ -204,6 +220,7 @@ function extractSettings(state: SettingsState): AppSettings {
   return {
     autoStartSession: state.autoStartSession,
     breedType: state.breedType,
+    vimModeEnabled: state.vimModeEnabled,
     defaultEditor: state.defaultEditor,
     customEditorCommand: state.customEditorCommand,
     defaultTerminal: state.defaultTerminal,
@@ -213,6 +230,7 @@ function extractSettings(state: SettingsState): AppSettings {
     ghosttyPromotionDismissed: state.ghosttyPromotionDismissed,
     selectedModel: state.selectedModel,
     selectedModelByProvider: state.selectedModelByProvider,
+    defaultModels: state.defaultModels,
     lastOpenAction: state.lastOpenAction,
     favoriteModels: state.favoriteModels,
     customChromeCommand: state.customChromeCommand,
@@ -222,6 +240,8 @@ function extractSettings(state: SettingsState): AppSettings {
     showUsageIndicator: state.showUsageIndicator,
     defaultAgentSdk: state.defaultAgentSdk,
     stripAtMentions: state.stripAtMentions,
+    codexFastMode: state.codexFastMode,
+    codexFastModeAccepted: state.codexFastModeAccepted,
     updateChannel: state.updateChannel,
     skippedUpdateVersion: state.skippedUpdateVersion,
     initialSetupComplete: state.initialSetupComplete,
@@ -283,7 +303,7 @@ export const useSettingsStore = create<SettingsState>()(
         }
       },
 
-      setSelectedModel: async (model: SelectedModel, agentSdk?: AppSettings['defaultAgentSdk']) => {
+      setSelectedModel: async (model: SelectedModel | null, agentSdk?: AppSettings['defaultAgentSdk']) => {
         if (agentSdk) {
           return get().setSelectedModelForSdk(agentSdk, model)
         }
@@ -294,22 +314,28 @@ export const useSettingsStore = create<SettingsState>()(
         } catch (error) {
           console.error('Failed to persist model selection:', error)
         }
-        // Also save in app settings
+        // Always save to app settings (including null to clear)
         const settings = extractSettings({ ...get(), selectedModel: model } as SettingsState)
         saveToDatabase(settings)
       },
 
       setSelectedModelForSdk: async (
         agentSdk: AppSettings['defaultAgentSdk'],
-        model: SelectedModel,
+        model: SelectedModel | null,
         options?: { skipBackendPush?: boolean }
       ) => {
-        const updated = { ...get().selectedModelByProvider, [agentSdk]: model }
-        set({ selectedModelByProvider: updated })
+        // null clears the per-SDK entry
+        const current = { ...get().selectedModelByProvider }
+        if (model) {
+          current[agentSdk] = model
+        } else {
+          delete current[agentSdk]
+        }
+        set({ selectedModelByProvider: current })
         // Push to backend (skip for terminal — no backend service, or when caller already pushed)
         if (agentSdk !== 'terminal' && !options?.skipBackendPush) {
           try {
-            await window.opencodeOps.setModel({ ...model, agentSdk })
+            await window.opencodeOps.setModel(model ? { ...model, agentSdk } : null)
           } catch (error) {
             console.error('Failed to persist model selection for SDK:', error)
           }
@@ -317,9 +343,25 @@ export const useSettingsStore = create<SettingsState>()(
         // Persist to app settings DB
         const settings = extractSettings({
           ...get(),
-          selectedModelByProvider: updated
+          selectedModelByProvider: current
         } as SettingsState)
         saveToDatabase(settings)
+      },
+
+      setModeDefaultModel: async (mode: 'build' | 'plan' | 'ask', model: SelectedModel | null) => {
+        const currentDefaults = get().defaultModels || { build: null, plan: null, ask: null }
+        const updated = { ...currentDefaults, [mode]: model }
+        set({ defaultModels: updated })
+
+        // Save to database (preference only — don't mutate the live service model)
+        const settings = extractSettings({ ...get(), defaultModels: updated } as SettingsState)
+        await saveToDatabase(settings)
+      },
+
+      getModelForMode: (mode: 'build' | 'plan' | 'ask') => {
+        // Return only the mode-specific default (no global fallback).
+        // Callers that need a fallback chain should check selectedModel separately.
+        return get().defaultModels?.[mode] ?? null
       },
 
       setModelVariantDefault: (providerID: string, modelID: string, variant: string) => {
@@ -383,6 +425,7 @@ export const useSettingsStore = create<SettingsState>()(
       partialize: (state) => ({
         autoStartSession: state.autoStartSession,
         breedType: state.breedType,
+        vimModeEnabled: state.vimModeEnabled,
         defaultEditor: state.defaultEditor,
         customEditorCommand: state.customEditorCommand,
         defaultTerminal: state.defaultTerminal,
@@ -392,6 +435,7 @@ export const useSettingsStore = create<SettingsState>()(
         ghosttyPromotionDismissed: state.ghosttyPromotionDismissed,
         selectedModel: state.selectedModel,
         selectedModelByProvider: state.selectedModelByProvider,
+        defaultModels: state.defaultModels,
         lastOpenAction: state.lastOpenAction,
         favoriteModels: state.favoriteModels,
         customChromeCommand: state.customChromeCommand,
@@ -402,6 +446,8 @@ export const useSettingsStore = create<SettingsState>()(
         defaultAgentSdk: state.defaultAgentSdk,
         activeSection: state.activeSection,
         stripAtMentions: state.stripAtMentions,
+        codexFastMode: state.codexFastMode,
+        codexFastModeAccepted: state.codexFastModeAccepted,
         updateChannel: state.updateChannel,
         skippedUpdateVersion: state.skippedUpdateVersion,
         initialSetupComplete: state.initialSetupComplete,

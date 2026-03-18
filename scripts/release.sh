@@ -17,9 +17,11 @@ fatal() { err "$1"; exit 1; }
 # ── Parse flags ──────────────────────────────────────────────────
 SHUTDOWN_AFTER=false
 SLEEP_AFTER=false
+AUTO_YES=false
 SUDO_KEEPALIVE_PID=""
 for arg in "$@"; do
   case "$arg" in
+    -y|--yes) AUTO_YES=true ;;
     --shutdown) SHUTDOWN_AFTER=true ;;
     --sleep) SLEEP_AFTER=true ;;
     *) fatal "Unknown argument: $arg" ;;
@@ -28,6 +30,10 @@ done
 
 if $SHUTDOWN_AFTER && $SLEEP_AFTER; then
   fatal "Cannot combine --shutdown and --sleep"
+fi
+
+if $AUTO_YES; then
+  warn "Auto-accepting all prompts (-y)"
 fi
 
 if $SHUTDOWN_AFTER; then
@@ -71,8 +77,10 @@ ok "Up to date with remote"
 CURRENT_BRANCH=$(git branch --show-current)
 if [[ "$CURRENT_BRANCH" != "main" ]]; then
   warn "You are on branch '$CURRENT_BRANCH', not 'main'."
-  read -rp "Continue anyway? [Y/n] " confirm
-  [[ "$confirm" =~ ^[Nn]$ ]] && exit 1
+  if ! $AUTO_YES; then
+    read -rp "Continue anyway? [Y/n] " confirm
+    [[ "$confirm" =~ ^[Nn]$ ]] && exit 1
+  fi
 fi
 
 # Check .env.signing exists
@@ -123,7 +131,14 @@ SUGGESTED_VERSION=$(node -p "
 info "Current version: ${YELLOW}v${CURRENT_VERSION}${NC}"
 
 # Prompt for new version with suggested default
-if [[ -n "$SUGGESTED_VERSION" ]]; then
+if $AUTO_YES; then
+  if [[ -n "$SUGGESTED_VERSION" ]]; then
+    NEW_VERSION="$SUGGESTED_VERSION"
+    ok "Auto-accepting version: ${NEW_VERSION}"
+  else
+    fatal "Cannot auto-accept version: no suggested version available"
+  fi
+elif [[ -n "$SUGGESTED_VERSION" ]]; then
   read -rp "Enter new version number (without 'v' prefix) [${SUGGESTED_VERSION}]: " NEW_VERSION
   NEW_VERSION="${NEW_VERSION:-$SUGGESTED_VERSION}"
 else
@@ -182,14 +197,16 @@ if [[ -n "$RELEASE_NOTES" ]]; then
   echo "$RELEASE_NOTES"
   echo -e "${CYAN}───────────────────────────────────────────────────${NC}"
   echo ""
-  read -rp "Edit release notes in \$EDITOR before publishing? [y/N] " edit_notes
-  if [[ "$edit_notes" =~ ^[Yy]$ ]]; then
-    NOTES_TMPFILE=$(mktemp "${TMPDIR:-/tmp}/hive-release-notes.XXXXXX")
-    echo "$RELEASE_NOTES" > "$NOTES_TMPFILE"
-    ${EDITOR:-vim} "$NOTES_TMPFILE"
-    RELEASE_NOTES=$(cat "$NOTES_TMPFILE")
-    rm -f "$NOTES_TMPFILE"
-    ok "Release notes updated"
+  if ! $AUTO_YES; then
+    read -rp "Edit release notes in \$EDITOR before publishing? [y/N] " edit_notes
+    if [[ "$edit_notes" =~ ^[Yy]$ ]]; then
+      NOTES_TMPFILE=$(mktemp "${TMPDIR:-/tmp}/hive-release-notes.XXXXXX")
+      echo "$RELEASE_NOTES" > "$NOTES_TMPFILE"
+      ${EDITOR:-vim} "$NOTES_TMPFILE"
+      RELEASE_NOTES=$(cat "$NOTES_TMPFILE")
+      rm -f "$NOTES_TMPFILE"
+      ok "Release notes updated"
+    fi
   fi
 else
   warn "No merged PRs found since v${CURRENT_VERSION}. Release will have no notes."
@@ -206,8 +223,10 @@ echo "  4. Publish DMGs/ZIPs to GitHub Release v${NEW_VERSION}"
 echo "  5. Update Homebrew cask with new SHA256 checksums"
 echo "  6. Push Homebrew repo"
 echo ""
-read -rp "Proceed? [Y/n] " confirm
-[[ "$confirm" =~ ^[Nn]$ ]] && { info "Aborted."; exit 0; }
+if ! $AUTO_YES; then
+  read -rp "Proceed? [Y/n] " confirm
+  [[ "$confirm" =~ ^[Nn]$ ]] && { info "Aborted."; exit 0; }
+fi
 
 # Arm EXIT trap AFTER user confirmation (so aborting doesn't trigger shutdown/notification)
 RELEASE_SUCCEEDED=false

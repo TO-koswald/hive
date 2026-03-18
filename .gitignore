@@ -52,7 +52,14 @@ vendor/
 *.pfx
 
 # Local debug/playground scripts
-scripts/
+scripts/*
+!scripts/generate-icon.py
+!scripts/release-canary.sh
+!scripts/release.sh
+!scripts/codex-app-server-probe.ts
 
 # Claude worktrees
 .claude/worktrees/
+
+# Superpowers brainstorm artifacts
+.superpowers/brainstorm/

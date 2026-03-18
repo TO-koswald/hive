@@ -22,13 +22,18 @@ export type Scalars = {
   JSON: { input: unknown; output: unknown }
 }
 
-export type AgentSdk = 'claude_code' | 'opencode'
+export type AgentSdk =
+  | 'claude_code'
+  | 'codex'
+  | 'opencode'
+  | 'terminal';
 
 export type AgentSdkDetection = {
-  __typename?: 'AgentSdkDetection'
-  claude: Scalars['Boolean']['output']
-  opencode: Scalars['Boolean']['output']
-}
+  __typename?: 'AgentSdkDetection';
+  claude: Scalars['Boolean']['output'];
+  codex: Scalars['Boolean']['output'];
+  opencode: Scalars['Boolean']['output'];
+};
 
 export type AppPaths = {
   __typename?: 'AppPaths'
@@ -1983,14 +1988,11 @@ export type ResolversParentTypes = ResolversObject<{
   WorktreeCreateResult: WorktreeCreateResult
 }>
 
-export type AgentSdkDetectionResolvers<
-  ContextType = GraphQLContext,
-  ParentType extends ResolversParentTypes['AgentSdkDetection'] =
-    ResolversParentTypes['AgentSdkDetection']
-> = ResolversObject<{
-  claude?: Resolver<ResolversTypes['Boolean'], ParentType, ContextType>
-  opencode?: Resolver<ResolversTypes['Boolean'], ParentType, ContextType>
-}>
+export type AgentSdkDetectionResolvers<ContextType = GraphQLContext, ParentType extends ResolversParentTypes['AgentSdkDetection'] = ResolversParentTypes['AgentSdkDetection']> = ResolversObject<{
+  claude?: Resolver<ResolversTypes['Boolean'], ParentType, ContextType>;
+  codex?: Resolver<ResolversTypes['Boolean'], ParentType, ContextType>;
+  opencode?: Resolver<ResolversTypes['Boolean'], ParentType, ContextType>;
+}>;
 
 export type AppPathsResolvers<
   ContextType = GraphQLContext,

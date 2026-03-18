@@ -78,7 +78,9 @@ export function SettingsSecurity(): React.JSX.Element {
     <div className="space-y-6" style={{ overflow: 'hidden' }}>
       <div>
         <h3 className="text-base font-medium mb-1">Security</h3>
-        <p className="text-sm text-muted-foreground">Control which commands Claude can execute</p>
+        <p className="text-sm text-muted-foreground">
+          Control command filtering for approval-based agent sessions
+        </p>
       </div>
 
       {/* Enable/Disable */}
@@ -86,7 +88,7 @@ export function SettingsSecurity(): React.JSX.Element {
         <div>
           <label className="text-sm font-medium">Enable command filtering</label>
           <p className="text-xs text-muted-foreground">
-            Control which tools and commands Claude can use during sessions
+            Control which tools and commands approval-based agents can use during sessions
           </p>
         </div>
         <button

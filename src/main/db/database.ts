@@ -18,6 +18,8 @@ import type {
   SessionMessageCreate,
   SessionMessageUpdate,
   SessionMessageUpsertByOpenCode,
+  SessionActivity,
+  SessionActivityCreate,
   Setting,
   SessionSearchOptions,
   SessionWithWorktree,
@@ -190,6 +192,29 @@ export class DatabaseService {
 
     db.exec(`
       CREATE INDEX IF NOT EXISTS idx_sessions_connection ON sessions(connection_id);
+    `)
+
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS session_activities (
+        id TEXT PRIMARY KEY,
+        session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+        agent_session_id TEXT,
+        thread_id TEXT,
+        turn_id TEXT,
+        item_id TEXT,
+        request_id TEXT,
+        kind TEXT NOT NULL,
+        tone TEXT NOT NULL,
+        summary TEXT NOT NULL,
+        payload_json TEXT,
+        sequence INTEGER,
+        created_at TEXT NOT NULL
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_session_activities_session_created
+        ON session_activities(session_id, created_at, id);
+      CREATE INDEX IF NOT EXISTS idx_session_activities_session_turn
+        ON session_activities(session_id, turn_id, created_at);
     `)
   }
 
@@ -741,11 +766,23 @@ export class DatabaseService {
     return row ?? null
   }
 
-  getAgentSdkForSession(agentSessionId: string): 'opencode' | 'claude-code' | null {
+  getSessionByOpenCodeSessionId(opencodeSessionId: string): Session | null {
+    const db = this.getDb()
+    const row = db
+      .prepare('SELECT * FROM sessions WHERE opencode_session_id = ? LIMIT 1')
+      .get(opencodeSessionId) as Session | undefined
+    return row ?? null
+  }
+
+  getAgentSdkForSession(
+    agentSessionId: string
+  ): 'opencode' | 'claude-code' | 'codex' | 'terminal' | null {
     const db = this.getDb()
     const row = db
       .prepare('SELECT agent_sdk FROM sessions WHERE opencode_session_id = ? LIMIT 1')
-      .get(agentSessionId) as { agent_sdk: 'opencode' | 'claude-code' } | undefined
+      .get(agentSessionId) as
+      | { agent_sdk: 'opencode' | 'claude-code' | 'codex' | 'terminal' }
+      | undefined
     return row?.agent_sdk ?? null
   }
 
@@ -1046,6 +1083,99 @@ export class DatabaseService {
     const db = this.getDb()
     const result = db.prepare('DELETE FROM session_messages WHERE id = ?').run(id)
     return result.changes > 0
+  }
+
+  replaceSessionMessages(sessionId: string, messages: SessionMessageCreate[]): SessionMessage[] {
+    const db = this.getDb()
+    const tx = db.transaction(() => {
+      db.prepare('DELETE FROM session_messages WHERE session_id = ?').run(sessionId)
+      const created: SessionMessage[] = []
+      for (const message of messages) {
+        created.push(
+          this.createSessionMessage({
+            ...message,
+            session_id: sessionId
+          })
+        )
+      }
+      return created
+    })
+    return tx()
+  }
+
+  upsertSessionActivity(data: SessionActivityCreate): SessionActivity {
+    const db = this.getDb()
+    const now = data.created_at ?? new Date().toISOString()
+    const id = data.id ?? randomUUID()
+
+    db.prepare(
+      `INSERT INTO session_activities (
+        id,
+        session_id,
+        agent_session_id,
+        thread_id,
+        turn_id,
+        item_id,
+        request_id,
+        kind,
+        tone,
+        summary,
+        payload_json,
+        sequence,
+        created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(id) DO UPDATE SET
+        agent_session_id = excluded.agent_session_id,
+        thread_id = excluded.thread_id,
+        turn_id = excluded.turn_id,
+        item_id = excluded.item_id,
+        request_id = excluded.request_id,
+        kind = excluded.kind,
+        tone = excluded.tone,
+        summary = excluded.summary,
+        payload_json = excluded.payload_json,
+        sequence = excluded.sequence,
+        created_at = excluded.created_at`
+    ).run(
+      id,
+      data.session_id,
+      data.agent_session_id ?? null,
+      data.thread_id ?? null,
+      data.turn_id ?? null,
+      data.item_id ?? null,
+      data.request_id ?? null,
+      data.kind,
+      data.tone,
+      data.summary,
+      data.payload_json ?? null,
+      data.sequence ?? null,
+      now
+    )
+
+    db.prepare('UPDATE sessions SET updated_at = ? WHERE id = ?').run(now, data.session_id)
+
+    const row = db.prepare('SELECT * FROM session_activities WHERE id = ?').get(id) as
+      | SessionActivity
+      | undefined
+    if (!row) {
+      throw new Error(`Failed to load session activity after upsert: ${id}`)
+    }
+    return row
+  }
+
+  getSessionActivities(sessionId: string): SessionActivity[] {
+    const db = this.getDb()
+    return db
+      .prepare(
+        `SELECT * FROM session_activities
+         WHERE session_id = ?
+         ORDER BY
+           CASE WHEN sequence IS NULL THEN 1 ELSE 0 END,
+           sequence ASC,
+           created_at ASC,
+           id ASC`
+      )
+      .all(sessionId) as SessionActivity[]
   }
 
   // Connection operations
