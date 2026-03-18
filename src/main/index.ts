@@ -348,9 +348,9 @@ function registerSystemHandlers(): void {
         const scriptContent = `@echo off\r\n"${execPath}" --headless %*\r\n`
         writeFileSync(targetPath, scriptContent)
 
-        // Add to user PATH via PowerShell (escape single quotes for safe interpolation)
+        // Add to user PATH via PowerShell if not already present (escape single quotes for safe interpolation)
         const escapedDir = installDir.replace(/'/g, "''")
-        const psCmd = `$d='${escapedDir}'; [Environment]::SetEnvironmentVariable('Path', [Environment]::GetEnvironmentVariable('Path','User')+';'+$d,'User')`
+        const psCmd = `$d='${escapedDir}'; $p=[Environment]::GetEnvironmentVariable('Path','User'); if($p -split ';' -notcontains $d){ [Environment]::SetEnvironmentVariable('Path',$p+';'+$d,'User') }`
         await execAsync(`powershell -Command "${psCmd}"`, { timeout: 15000 })
 
         return { success: true, path: targetPath }

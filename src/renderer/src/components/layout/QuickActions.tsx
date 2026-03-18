@@ -1,10 +1,11 @@
 import { Copy, Check, FolderOpen, GitBranch, Terminal, Code } from 'lucide-react'
 import { fileManagerName } from '@/lib/platform'
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import { Button } from '@/components/ui/button'
 import { useWorktreeStore } from '@/stores/useWorktreeStore'
 import { useConnectionStore } from '@/stores/useConnectionStore'
 import { useSettingsStore, type EditorOption, type TerminalOption } from '@/stores/useSettingsStore'
+import { useProjectStore } from '@/stores/useProjectStore'
 
 function CursorIcon({ className }: { className?: string }): React.JSX.Element {
   return (
@@ -338,6 +339,47 @@ export function QuickActions(): React.JSX.Element | null {
       ? selectedWorktree.branch_name
       : null
   const disabled = !activePath
+
+  const selectedProject = useProjectStore((s) =>
+    s.selectedProjectId ? s.projects.find((p) => p.id === s.selectedProjectId) : null
+  )
+  const isSwiftProject = selectedProject?.language === 'swift'
+  const isKotlinOrJava =
+    selectedProject?.language === 'kotlin' || selectedProject?.language === 'java'
+  const [xcworkspacePath, setXcworkspacePath] = useState<string | null>(null)
+  const [isAndroidProject, setIsAndroidProject] = useState(false)
+
+  useEffect(() => {
+    if (!isSwiftProject || isConnectionMode) {
+      setXcworkspacePath(null)
+      return
+    }
+    const searchPath = activePath || selectedProject?.path
+    if (!searchPath) {
+      setXcworkspacePath(null)
+      return
+    }
+    window.projectOps
+      .findXcworkspace(searchPath)
+      .then(setXcworkspacePath)
+      .catch(() => setXcworkspacePath(null))
+  }, [isSwiftProject, activePath, selectedProject?.path, isConnectionMode])
+
+  useEffect(() => {
+    if (!isKotlinOrJava || isConnectionMode) {
+      setIsAndroidProject(false)
+      return
+    }
+    const searchPath = activePath || selectedProject?.path
+    if (!searchPath) {
+      setIsAndroidProject(false)
+      return
+    }
+    window.projectOps
+      .isAndroidProject(searchPath)
+      .then(setIsAndroidProject)
+      .catch(() => setIsAndroidProject(false))
+  }, [isKotlinOrJava, activePath, selectedProject?.path, isConnectionMode])
 
   const editorLabel = EDITOR_LABELS[defaultEditor]
   const terminalLabel = TERMINAL_LABELS[defaultTerminal]
