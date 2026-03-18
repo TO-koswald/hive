@@ -28,6 +28,14 @@ autoUpdater.autoInstallOnAppQuit = true
 autoUpdater.logger = null
 
 let isManualCheck = false
+let checkInterval: ReturnType<typeof setInterval> | null = null
+let initialTimeout: ReturnType<typeof setTimeout> | null = null
+
+function safeSend(win: BrowserWindow, channel: string, data?: unknown): void {
+  if (!win.isDestroyed()) {
+    win.webContents.send(channel, data)
+  }
+}
 
 export const updaterService = {
   init(mainWindow: BrowserWindow): void {
@@ -44,12 +52,12 @@ export const updaterService = {
 
     autoUpdater.on('checking-for-update', () => {
       log.info('Checking for update')
-      mainWindow.webContents.send('updater:checking')
+      safeSend(mainWindow, 'updater:checking')
     })
 
     autoUpdater.on('update-available', (info) => {
       log.info('Update available', { version: info.version, isManualCheck })
-      mainWindow.webContents.send('updater:available', {
+      safeSend(mainWindow, 'updater:available', {
         version: info.version,
         releaseNotes: info.releaseNotes,
         releaseDate: info.releaseDate,
@@ -60,7 +68,7 @@ export const updaterService = {
 
     autoUpdater.on('update-not-available', (info) => {
       log.info('No update available', { version: info.version, isManualCheck })
-      mainWindow.webContents.send('updater:not-available', {
+      safeSend(mainWindow, 'updater:not-available', {
         version: info.version,
         isManualCheck
       })
@@ -69,7 +77,7 @@ export const updaterService = {
 
     autoUpdater.on('download-progress', (progress) => {
       log.info('Download progress', { percent: Math.round(progress.percent) })
-      mainWindow.webContents.send('updater:progress', {
+      safeSend(mainWindow, 'updater:progress', {
         percent: progress.percent,
         bytesPerSecond: progress.bytesPerSecond,
         transferred: progress.transferred,
@@ -79,7 +87,7 @@ export const updaterService = {
 
     autoUpdater.on('update-downloaded', (info) => {
       log.info('Update downloaded', { version: info.version })
-      mainWindow.webContents.send('updater:downloaded', {
+      safeSend(mainWindow, 'updater:downloaded', {
         version: info.version,
         releaseNotes: info.releaseNotes
       })
@@ -87,18 +95,18 @@ export const updaterService = {
 
     autoUpdater.on('error', (error) => {
       log.error('Update error', error)
-      mainWindow.webContents.send('updater:error', {
+      safeSend(mainWindow, 'updater:error', {
         message: error?.message ?? String(error),
         isManualCheck
       })
       isManualCheck = false
     })
 
-    setTimeout(() => {
+    initialTimeout = setTimeout(() => {
       this.checkForUpdates()
     }, INITIAL_DELAY)
 
-    setInterval(() => {
+    checkInterval = setInterval(() => {
       this.checkForUpdates()
     }, CHECK_INTERVAL)
   },
@@ -128,6 +136,17 @@ export const updaterService = {
 
   quitAndInstall(): void {
     autoUpdater.quitAndInstall()
+  },
+
+  cleanup(): void {
+    if (initialTimeout) {
+      clearTimeout(initialTimeout)
+      initialTimeout = null
+    }
+    if (checkInterval) {
+      clearInterval(checkInterval)
+      checkInterval = null
+    }
   },
 
   setChannel(channel: 'stable' | 'canary'): void {

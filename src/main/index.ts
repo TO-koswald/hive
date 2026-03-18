@@ -567,6 +567,8 @@ app.on('window-all-closed', () => {
 
 // Cleanup when app is about to quit
 app.on('will-quit', async () => {
+  // Cleanup updater timers
+  updaterService.cleanup()
   // Cleanup terminal PTYs
   cleanupTerminals()
   // Cleanup running scripts

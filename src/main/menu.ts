@@ -12,7 +12,9 @@ export interface MenuState {
 let _mainWindow: BrowserWindow | null = null
 
 function send(channel: string): void {
-  _mainWindow?.webContents.send(channel)
+  if (_mainWindow && !_mainWindow.isDestroyed()) {
+    _mainWindow.webContents.send(channel)
+  }
 }
 
 const sessionItemIds = [
