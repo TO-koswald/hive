@@ -3,7 +3,7 @@ import { app, shell, BrowserWindow, screen, ipcMain, clipboard } from 'electron'
 import { join } from 'path'
 import { spawn, exec } from 'child_process'
 import { promisify } from 'util'
-import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'fs'
+import { existsSync, readFileSync, writeFileSync, mkdirSync, unlinkSync } from 'fs'
 import { electronApp, is } from '@electron-toolkit/utils'
 import { getDatabase, closeDatabase } from './db'
 import {
@@ -400,7 +400,6 @@ function registerSystemHandlers(): void {
           return { success: false, error: 'hive-server is not installed' }
         }
 
-        const { unlinkSync } = await import('fs')
         unlinkSync(targetPath)
 
         // Remove from user PATH via PowerShell (escape single quotes for safe interpolation)

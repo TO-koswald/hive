@@ -1,12 +1,12 @@
-let _platform: string | null = null
+// Synchronous best-guess so callers before initPlatform() get a reasonable default
+const nav = typeof navigator !== 'undefined' ? navigator.platform.toLowerCase() : ''
+let _platform: string = nav.includes('win') ? 'win32' : nav.includes('linux') ? 'linux' : 'darwin'
 
 export async function initPlatform(): Promise<void> {
   try {
     _platform = await window.systemOps.getPlatform()
   } catch {
-    // Fallback: detect from navigator as best-effort
-    const nav = navigator.platform.toLowerCase()
-    _platform = nav.includes('win') ? 'win32' : nav.includes('linux') ? 'linux' : 'darwin'
+    // Keep the synchronous best-guess already set above
   }
 }
 
